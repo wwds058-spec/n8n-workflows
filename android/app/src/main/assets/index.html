@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ECI NDX Scanner</title>
+<script src="tess/tesseract.min.js"></script>
+<style>
+  :root {
+    --green: #27ae60;
+    --red: #e74c3c;
+    --blue: #2980b9;
+    --dark: #1a252f;
+    --light: #f0f3f4;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    background: var(--dark);
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  header {
+    width: 100%;
+    background: #111;
+    padding: 14px 16px;
+    text-align: center;
+    border-bottom: 2px solid var(--blue);
+  }
+  header h1 { font-size: 18px; color: white; }
+  header p { font-size: 12px; color: #aaa; margin-top: 3px; }
+
+  .badge {
+    background: var(--blue);
+    color: white;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-block;
+    margin-top: 4px;
+  }
+
+  /* Camera area */
+  .cam-wrap {
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    background: #000;
+    aspect-ratio: 4/3;
+    overflow: hidden;
+  }
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .scan-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .scan-box {
+    width: 80%;
+    height: 60px;
+    border: 2px solid rgba(255,255,0,0.8);
+    border-radius: 6px;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,0.35);
+    position: relative;
+  }
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: rgba(255,255,0,0.9);
+    animation: scanAnim 1.5s ease-in-out infinite;
+  }
+  @keyframes scanAnim {
+    0% { top: 0; }
+    50% { top: calc(100% - 2px); }
+    100% { top: 0; }
+  }
+  .scan-hint {
+    position: absolute;
+    bottom: 8px;
+    width: 100%;
+    text-align: center;
+    font-size: 12px;
+    color: rgba(255,255,255,0.85);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+
+  canvas { display: none; }
+
+  /* Controls */
+  .controls {
+    width: 100%;
+    max-width: 480px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .btn-scan {
+    width: 100%;
+    padding: 16px;
+    font-size: 17px;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    background: var(--blue);
+    color: white;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: background 0.2s;
+  }
+  .btn-scan:active { background: #1a6fa0; }
+  .btn-scan:disabled { background: #555; color: #999; }
+
+  /* Result */
+  .result-box {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 16px;
+    border-radius: 12px;
+    padding: 18px 20px;
+    text-align: center;
+    display: none;
+    animation: popIn 0.3s ease;
+  }
+  @keyframes popIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .result-box.match {
+    background: var(--green);
+    display: block;
+  }
+  .result-box.no-match {
+    background: #555;
+    display: block;
+  }
+  .result-box.error {
+    background: #8e44ad;
+    display: block;
+  }
+  .result-icon { font-size: 42px; }
+  .result-ndx { font-size: 22px; font-weight: bold; margin: 8px 0 4px; letter-spacing: 1px; }
+  .result-msg { font-size: 15px; opacity: 0.95; }
+  .result-action {
+    margin-top: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    background: rgba(255,255,255,0.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+
+  /* Processing */
+  .processing {
+    display: none;
+    text-align: center;
+    padding: 16px;
+    color: #aaa;
+    font-size: 14px;
+    width: 100%;
+    max-width: 480px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 4px solid #333;
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 10px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Manual input */
+  .manual-section {
+    width: 100%;
+    max-width: 480px;
+    padding: 0 16px 12px;
+  }
+  .manual-section label {
+    font-size: 12px;
+    color: #aaa;
+    display: block;
+    margin-bottom: 5px;
+  }
+  .manual-row {
+    display: flex;
+    gap: 8px;
+  }
+  .manual-input {
+    flex: 1;
+    padding: 11px 12px;
+    font-size: 15px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background: #2c3e50;
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .manual-input::placeholder { color: #666; text-transform: none; }
+  .btn-check {
+    padding: 11px 16px;
+    background: #8e44ad;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  /* History */
+  .history-section {
+    width: 100%;
+    max-width: 480px;
+    padding: 0 16px 20px;
+  }
+  .history-title {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .btn-clear { font-size: 11px; color: #e74c3c; background: none; border: none; cursor: pointer; }
+  .history-list { display: flex; flex-direction: column; gap: 5px; }
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #2c3e50;
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  .history-item .ndx { font-weight: bold; letter-spacing: 0.5px; }
+  .history-item .tag {
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .tag.match { background: var(--green); }
+  .tag.no-match { background: #555; }
+
+  /* List view */
+  .list-toggle {
+    width: 100%;
+    max-width: 480px;
+    padding: 0 16px 8px;
+  }
+  .btn-list {
+    width: 100%;
+    padding: 10px;
+    background: #2c3e50;
+    color: #aaa;
+    border: 1px solid #444;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .ndx-list-panel {
+    display: none;
+    width: 100%;
+    max-width: 480px;
+    padding: 0 16px 16px;
+  }
+  .ndx-list-panel.open { display: block; }
+  .ndx-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .ndx-chip {
+    background: #2c3e50;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #ccc;
+    text-align: center;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 ECI NDX Scanner</h1>
+  <p>BLO Verification 2026 — Not Collected Checker</p>
+  <span class="badge">35 NDX Numbers Loaded</span>
+</header>
+
+<!-- Camera -->
+<div class="cam-wrap">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div class="scan-overlay">
+    <div class="scan-box">
+      <div class="scan-line"></div>
+    </div>
+    <div class="scan-hint">Point NDX number inside the box</div>
+  </div>
+</div>
+
+<!-- Scan button -->
+<div class="controls">
+  <button class="btn-scan" id="btnScan" onclick="captureAndScan()">📷 SCAN NDX NUMBER</button>
+</div>
+
+<!-- Processing -->
+<div class="processing" id="processing">
+  <div class="spinner"></div>
+  Reading NDX number...
+</div>
+
+<!-- Result -->
+<div class="result-box" id="resultBox">
+  <div class="result-icon" id="resultIcon"></div>
+  <div class="result-ndx" id="resultNdx"></div>
+  <div class="result-msg" id="resultMsg"></div>
+  <div class="result-action" id="resultAction"></div>
+</div>
+
+<!-- Manual input -->
+<div class="manual-section">
+  <label>Or type NDX number manually:</label>
+  <div class="manual-row">
+    <input class="manual-input" id="manualInput" type="text" placeholder="e.g. NDX1234567" maxlength="12">
+    <button class="btn-check" onclick="manualCheck()">CHECK</button>
+  </div>
+</div>
+
+<!-- History -->
+<div class="history-section" id="historySection" style="display:none">
+  <div class="history-title">
+    <span>Recent Scans</span>
+    <button class="btn-clear" onclick="clearHistory()">Clear</button>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
+<!-- Full list toggle -->
+<div class="list-toggle">
+  <button class="btn-list" onclick="toggleList()">📋 View All 35 Not Collected NDX Numbers</button>
+</div>
+<div class="ndx-list-panel" id="ndxListPanel">
+  <div class="ndx-grid" id="ndxGrid"></div>
+</div>
+
+<script>
+// ============ NDX NOT COLLECTED LIST ============
+const NOT_COLLECTED = new Set([
+  "NDX0437749","NDX0439695","NDX0441279","NDX0442079","NDX0443697",
+  "NDX0445635","NDX0464511","NDX0529487","NDX0683615","NDX0696732",
+  "NDX0697094","NDX1085950","NDX1092972","NDX1093012","NDX1093111",
+  "NDX1308162","NDX1486241","NDX2344349","NDX2347144","NDX2347490",
+  "NDX2347714","NDX2683993","NDX2691038","NDX2696466","NDX2712149",
+  "NDX2718633","NDX2826154","NDX2826204","NDX2832889","NDX2948727",
+  "NDX3116845","NDX3524907","NDX3526258","NDX3595360","NDX3982584"
+]);
+
+let history = loadHistory();
+let scanning = false;
+
+// ============ CAMERA SETUP ============
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 960 }
+      }
+    });
+    video.srcObject = stream;
+  } catch(e) {
+    console.error('Camera error:', e);
+    document.querySelector('.cam-wrap').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#aaa;font-size:14px;">📷 Camera not available.<br>Use manual input below.</div>';
+  }
+}
+
+// ============ OFFLINE OCR WORKER ============
+// Everything below is bundled inside the APK (assets/tess), so OCR works
+// with no internet connection at all.
+let ocrWorker = null;
+let ocrWorkerPromise = null;
+
+function getOcrWorker() {
+  if (ocrWorker) return Promise.resolve(ocrWorker);
+  if (ocrWorkerPromise) return ocrWorkerPromise;
+  ocrWorkerPromise = (async () => {
+    const worker = await Tesseract.createWorker('eng', 1, {
+      workerPath: 'tess/worker.min.js',
+      corePath: 'tess/',
+      langPath: 'tess/',
+      gzip: true,
+      cacheMethod: 'none'
+    });
+    await worker.setParameters({
+      tessedit_char_whitelist: 'NDX0123456789',
+      tessedit_pageseg_mode: '7' // treat the crop as a single text line
+    });
+    ocrWorker = worker;
+    return worker;
+  })();
+  return ocrWorkerPromise;
+}
+
+async function ocrRecognize(image) {
+  const worker = await getOcrWorker();
+  return worker.recognize(image);
+}
+
+// Warm the OCR engine up in the background so the first scan is not slow.
+window.addEventListener('load', () => { getOcrWorker().catch(e => console.error('OCR init failed', e)); });
+
+// ============ CAPTURE & OCR ============
+async function captureAndScan() {
+  if (scanning) return;
+  scanning = true;
+
+  const btn = document.getElementById('btnScan');
+  btn.disabled = true;
+  document.getElementById('resultBox').style.display = 'none';
+  document.getElementById('processing').style.display = 'block';
+
+  // Capture frame
+  const ctx = canvas.getContext('2d');
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // Crop center strip where NDX number likely is (middle 80% width, middle 40% height)
+  const cropX = canvas.width * 0.05;
+  const cropY = canvas.height * 0.30;
+  const cropW = canvas.width * 0.90;
+  const cropH = canvas.height * 0.40;
+
+  const cropCanvas = document.createElement('canvas');
+  cropCanvas.width = cropW * 2;
+  cropCanvas.height = cropH * 2;
+  const cropCtx = cropCanvas.getContext('2d');
+
+  // Scale up for better OCR
+  cropCtx.scale(2, 2);
+  cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+  // Enhance contrast
+  const imgData = cropCtx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
+  enhanceContrast(imgData);
+  cropCtx.putImageData(imgData, 0, 0);
+
+  try {
+    const result = await ocrRecognize(cropCanvas);
+
+    const rawText = result.data.text;
+    const ndx = extractNDX(rawText);
+
+    if (ndx) {
+      showResult(ndx);
+    } else {
+      // Try full image if crop failed
+      const fullResult = await ocrRecognize(canvas);
+      const ndx2 = extractNDX(fullResult.data.text);
+      if (ndx2) {
+        showResult(ndx2);
+      } else {
+        showError('Could not read NDX number.\nTry again or type manually below.');
+      }
+    }
+  } catch(e) {
+    showError('OCR failed. Please type the NDX number manually.');
+  }
+
+  document.getElementById('processing').style.display = 'none';
+  btn.disabled = false;
+  scanning = false;
+}
+
+function enhanceContrast(imgData) {
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+    const val = avg < 128 ? 0 : 255;
+    d[i] = d[i+1] = d[i+2] = val;
+  }
+}
+
+function extractNDX(text) {
+  // Match NDX followed by 7 digits
+  const matches = text.toUpperCase().match(/NDX\s*(\d{7})/g);
+  if (matches && matches.length > 0) {
+    return matches[0].replace(/\s/g, '').toUpperCase();
+  }
+  // Also try partial: N D X + digits
+  const loose = text.toUpperCase().replace(/[^NDX0-9]/g, '');
+  const m2 = loose.match(/NDX(\d{7})/);
+  if (m2) return 'NDX' + m2[1];
+  return null;
+}
+
+// ============ RESULT DISPLAY ============
+function showResult(ndx) {
+  const isMatch = NOT_COLLECTED.has(ndx);
+  const box = document.getElementById('resultBox');
+  box.className = 'result-box ' + (isMatch ? 'match' : 'no-match');
+  document.getElementById('resultIcon').textContent = isMatch ? '✅' : '➡️';
+  document.getElementById('resultNdx').textContent = ndx;
+  document.getElementById('resultMsg').textContent = isMatch
+    ? 'Found in Not Collected list!'
+    : 'Not in Not Collected list';
+  document.getElementById('resultAction').textContent = isMatch
+    ? '📂 SEPARATE THIS FORM'
+    : '📋 KEEP IN BUNDLE';
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  addHistory(ndx, isMatch);
+  vibrate(isMatch);
+}
+
+function showError(msg) {
+  const box = document.getElementById('resultBox');
+  box.className = 'result-box error';
+  document.getElementById('resultIcon').textContent = '⚠️';
+  document.getElementById('resultNdx').textContent = 'Not Detected';
+  document.getElementById('resultMsg').textContent = msg;
+  document.getElementById('resultAction').textContent = 'Try again or type manually';
+  box.style.display = 'block';
+}
+
+// ============ MANUAL CHECK ============
+function manualCheck() {
+  let val = document.getElementById('manualInput').value.trim().toUpperCase();
+  if (!val) return;
+
+  // Auto-add NDX prefix if missing
+  if (/^\d{7}$/.test(val)) val = 'NDX' + val;
+  if (!val.startsWith('NDX')) val = 'NDX' + val.replace(/^NDX/i, '');
+
+  document.getElementById('manualInput').value = '';
+  showResult(val);
+}
+
+document.getElementById('manualInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') manualCheck();
+});
+
+// ============ VIBRATE ============
+function vibrate(isMatch) {
+  if (!navigator.vibrate) return;
+  if (isMatch) {
+    navigator.vibrate([100, 50, 100, 50, 200]); // strong for match
+  } else {
+    navigator.vibrate(80); // light for no match
+  }
+}
+
+// ============ HISTORY ============
+function addHistory(ndx, isMatch) {
+  history.unshift({ ndx, isMatch, time: new Date().toLocaleTimeString() });
+  if (history.length > 20) history.pop();
+  saveHistory();
+  renderHistory();
+}
+
+function renderHistory() {
+  const section = document.getElementById('historySection');
+  const list = document.getElementById('historyList');
+  if (history.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  list.innerHTML = history.map(h => `
+    <div class="history-item">
+      <span class="ndx">${h.ndx}</span>
+      <span style="color:#aaa;font-size:11px">${h.time}</span>
+      <span class="tag ${h.isMatch ? 'match' : 'no-match'}">${h.isMatch ? 'SEPARATE' : 'KEEP'}</span>
+    </div>
+  `).join('');
+}
+
+function clearHistory() {
+  history = [];
+  saveHistory();
+  renderHistory();
+}
+
+function saveHistory() {
+  try { localStorage.setItem('ndxHistory', JSON.stringify(history)); } catch(e) {}
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem('ndxHistory');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+// ============ NDX LIST PANEL ============
+function toggleList() {
+  const panel = document.getElementById('ndxListPanel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open') && !document.getElementById('ndxGrid').innerHTML) {
+    document.getElementById('ndxGrid').innerHTML = [...NOT_COLLECTED].sort().map(n =>
+      `<div class="ndx-chip">${n}</div>`
+    ).join('');
+  }
+}
+
+// ============ INIT ============
+renderHistory();
+startCamera();
+</script>
+</body>
+</html>

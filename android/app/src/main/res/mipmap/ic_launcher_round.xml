@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fallback launcher icon for API < 26 (adaptive icon is in mipmap-anydpi-v26). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#1A252F"
+        android:pathData="M0,0h108v108H0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,30h36a4,4 0 0 1 4,4v40a4,4 0 0 1 -4,4H36a4,4 0 0 1 -4,-4V34a4,4 0 0 1 4,-4z" />
+    <path
+        android:fillColor="#2980B9"
+        android:pathData="M46,26h16a2,2 0 0 1 2,2v6a2,2 0 0 1 -2,2H46a2,2 0 0 1 -2,-2v-6a2,2 0 0 1 2,-2z" />
+    <path
+        android:fillColor="#E74C3C"
+        android:pathData="M38,52h32v4H38z" />
+    <path
+        android:fillColor="#1A252F"
+        android:pathData="M40,44h28v3H40zM40,62h28v3H40zM40,69h18v3H40z" />
+</vector>

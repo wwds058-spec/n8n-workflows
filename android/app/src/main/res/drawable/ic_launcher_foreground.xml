@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Clipboard body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,30h36a4,4 0 0 1 4,4v40a4,4 0 0 1 -4,4H36a4,4 0 0 1 -4,-4V34a4,4 0 0 1 4,-4z" />
+    <!-- Clip at the top -->
+    <path
+        android:fillColor="#2980B9"
+        android:pathData="M46,26h16a2,2 0 0 1 2,2v6a2,2 0 0 1 -2,2H46a2,2 0 0 1 -2,-2v-6a2,2 0 0 1 2,-2z" />
+    <!-- Scan line -->
+    <path
+        android:fillColor="#E74C3C"
+        android:pathData="M38,52h32v4H38z" />
+    <!-- Text rows -->
+    <path
+        android:fillColor="#1A252F"
+        android:pathData="M40,44h28v3H40zM40,62h28v3H40zM40,69h18v3H40z" />
+</vector>
