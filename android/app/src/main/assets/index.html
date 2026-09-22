@@ -155,6 +155,15 @@
     background: #8e44ad;
     display: block;
   }
+  .result-box.near {
+    background: #d68910;
+    display: block;
+  }
+  .result-raw {
+    font-size: 12px;
+    opacity: 0.9;
+    margin-top: 6px;
+  }
   .result-icon { font-size: 42px; }
   .result-ndx { font-size: 22px; font-weight: bold; margin: 8px 0 4px; letter-spacing: 1px; }
   .result-msg { font-size: 15px; opacity: 0.95; }
@@ -421,18 +430,24 @@ function getOcrWorker() {
       gzip: false,
       cacheMethod: 'none'
     });
-    await worker.setParameters({
-      tessedit_char_whitelist: 'NDX0123456789',
-      tessedit_pageseg_mode: '7' // treat the crop as a single text line
-    });
+    // No character whitelist: it makes Tesseract force every blob into an
+    // allowed glyph, which hurts more than it helps. Lookalikes are mapped
+    // afterwards in digitsOnly() instead.
+    await worker.setParameters({ tessedit_pageseg_mode: '7' });
+    currentPsm = '7';
     ocrWorker = worker;
     return worker;
   })();
   return ocrWorkerPromise;
 }
 
-async function ocrRecognize(image) {
+let currentPsm = null;
+async function ocrRecognize(image, psm) {
   const worker = await getOcrWorker();
+  if (psm && psm !== currentPsm) {
+    await worker.setParameters({ tessedit_pageseg_mode: psm });
+    currentPsm = psm;
+  }
   return worker.recognize(image);
 }
 
@@ -440,6 +455,113 @@ async function ocrRecognize(image) {
 window.addEventListener('load', () => { getOcrWorker().catch(e => console.error('OCR init failed', e)); });
 
 // ============ CAPTURE & OCR ============
+// The scan box the user aims with is a DOM element laid over a video that is
+// drawn with `object-fit: cover`, so the on-screen box does not map 1:1 onto
+// the camera frame. Work out the matching rectangle in video pixels.
+function getScanRectInVideoCoords() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+
+  const vRect = video.getBoundingClientRect();
+  const bRect = document.querySelector('.scan-box').getBoundingClientRect();
+  if (!vRect.width || !vRect.height) return null;
+
+  // `cover` scales by the larger ratio and centres the overflow.
+  const scale = Math.max(vRect.width / vw, vRect.height / vh);
+  const offX = (vRect.width - vw * scale) / 2;
+  const offY = (vRect.height - vh * scale) / 2;
+
+  let x = (bRect.left - vRect.left - offX) / scale;
+  let y = (bRect.top - vRect.top - offY) / scale;
+  let w = bRect.width / scale;
+  let h = bRect.height / scale;
+
+  // Breathing room, mostly vertical: the number often sits a little high or
+  // low in the box without the user noticing.
+  const padX = w * 0.04, padY = h * 0.35;
+  x -= padX; y -= padY; w += padX * 2; h += padY * 2;
+
+  x = Math.max(0, Math.min(x, vw - 1));
+  y = Math.max(0, Math.min(y, vh - 1));
+  w = Math.min(w, vw - x);
+  h = Math.min(h, vh - y);
+  return { x, y, w, h };
+}
+
+/** Draw a region of the frame scaled up, as greyscale, ready for thresholding. */
+function buildCrop(rect, zoom) {
+  const c = document.createElement('canvas');
+  c.width = Math.round(rect.w * zoom);
+  c.height = Math.round(rect.h * zoom);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+  return c;
+}
+
+/** Otsu's method: pick the threshold that best splits ink from paper. */
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0, wB = 0, best = 0, bestVar = -1;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > bestVar) { bestVar = between; best = t; }
+  }
+  return best;
+}
+
+/**
+ * Preprocess in place.
+ *   'gray'   – greyscale with the contrast stretched; keeps faint strokes.
+ *   'otsu'   – binarised at an image-derived threshold, not a fixed 128.
+ *   'invert' – binarised and inverted, for light text on a dark background.
+ */
+function preprocess(ctx, mode) {
+  const img = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const d = img.data;
+  const hist = new Uint32Array(256);
+  const gray = new Uint8ClampedArray(d.length / 4);
+
+  for (let i = 0, g = 0; i < d.length; i += 4, g++) {
+    // Rec. 601 luma: closer to perceived brightness than a flat average.
+    const v = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+    gray[g] = v;
+    hist[v]++;
+  }
+
+  if (mode === 'gray') {
+    // Stretch the middle 98% of the range so paper goes white and ink black.
+    const total = gray.length;
+    let lo = 0, hi = 255, acc = 0;
+    for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc > total * 0.01) { lo = i; break; } }
+    acc = 0;
+    for (let i = 255; i >= 0; i--) { acc += hist[i]; if (acc > total * 0.01) { hi = i; break; } }
+    const span = Math.max(1, hi - lo);
+    for (let i = 0, g = 0; i < d.length; i += 4, g++) {
+      const v = Math.max(0, Math.min(255, ((gray[g] - lo) * 255) / span));
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+  } else {
+    const t = otsuThreshold(hist, gray.length);
+    const on = mode === 'invert' ? 255 : 0;
+    const off = mode === 'invert' ? 0 : 255;
+    for (let i = 0, g = 0; i < d.length; i += 4, g++) {
+      const v = gray[g] < t ? on : off;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 async function captureAndScan() {
   if (scanning) return;
   scanning = true;
@@ -449,98 +571,166 @@ async function captureAndScan() {
   document.getElementById('resultBox').style.display = 'none';
   document.getElementById('processing').style.display = 'block';
 
-  // Capture frame
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   canvas.width = video.videoWidth || 640;
   canvas.height = video.videoHeight || 480;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // Crop center strip where NDX number likely is (middle 80% width, middle 40% height)
-  const cropX = canvas.width * 0.05;
-  const cropY = canvas.height * 0.30;
-  const cropW = canvas.width * 0.90;
-  const cropH = canvas.height * 0.40;
+  const box = getScanRectInVideoCoords();
+  const full = { x: 0, y: 0, w: canvas.width, h: canvas.height };
 
-  const cropCanvas = document.createElement('canvas');
-  cropCanvas.width = cropW * 2;
-  cropCanvas.height = cropH * 2;
-  const cropCtx = cropCanvas.getContext('2d');
+  // Cheapest, most likely passes first; each is only run if the last found
+  // nothing usable, so a clean scan still returns quickly.
+  const attempts = [];
+  if (box) {
+    attempts.push({ rect: box, zoom: 3, mode: 'otsu', psm: '7' });
+    attempts.push({ rect: box, zoom: 3, mode: 'gray', psm: '7' });
+    attempts.push({ rect: box, zoom: 4, mode: 'otsu', psm: '6' });
+    attempts.push({ rect: box, zoom: 3, mode: 'invert', psm: '7' });
+  }
+  attempts.push({ rect: full, zoom: 2, mode: 'gray', psm: '6' });
+  attempts.push({ rect: full, zoom: 2, mode: 'otsu', psm: '6' });
 
-  // Scale up for better OCR
-  cropCtx.scale(2, 2);
-  cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-  // Enhance contrast
-  const imgData = cropCtx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
-  enhanceContrast(imgData);
-  cropCtx.putImageData(imgData, 0, 0);
+  let fallback = null;
 
   try {
-    const result = await ocrRecognize(cropCanvas);
+    for (const a of attempts) {
+      const c = buildCrop(a.rect, a.zoom);
+      preprocess(c.getContext('2d', { willReadFrequently: true }), a.mode);
 
-    const rawText = result.data.text;
-    const ndx = extractNDX(rawText);
+      const result = await ocrRecognize(c, a.psm);
+      const found = extractNDX(result.data.text);
+      if (!found) continue;
 
-    if (ndx) {
-      showResult(ndx);
-    } else {
-      // Try full image if crop failed
-      const fullResult = await ocrRecognize(canvas);
-      const ndx2 = extractNDX(fullResult.data.text);
-      if (ndx2) {
-        showResult(ndx2);
-      } else {
-        showError('Could not read NDX number.\nTry again or type manually below.');
+      // An exact hit on the list is as good as it gets - stop here.
+      if (NOT_COLLECTED.has(found.ndx)) {
+        showResult(found.ndx, found.corrected);
+        return;
       }
+      // Otherwise keep the first plausible read and let the other passes try
+      // to do better before we commit to it.
+      if (!fallback) fallback = found;
+    }
+
+    if (fallback) {
+      showResult(fallback.ndx, fallback.corrected);
+    } else {
+      showError('Could not read the NDX number.\nHold steady, fill the yellow box with the number, then try again.');
     }
   } catch(e) {
+    console.error('OCR failed', e);
     showError('OCR failed. Please type the NDX number manually.');
-  }
-
-  document.getElementById('processing').style.display = 'none';
-  btn.disabled = false;
-  scanning = false;
-}
-
-function enhanceContrast(imgData) {
-  const d = imgData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
-    const val = avg < 128 ? 0 : 255;
-    d[i] = d[i+1] = d[i+2] = val;
+  } finally {
+    document.getElementById('processing').style.display = 'none';
+    btn.disabled = false;
+    scanning = false;
   }
 }
 
+// ============ NDX PARSING ============
+// Letters Tesseract commonly returns in place of digits on printed forms.
+const DIGIT_LOOKALIKES = {
+  O: '0', Q: '0', D: '0', U: '0',
+  I: '1', L: '1', T: '1', '|': '1', '!': '1',
+  Z: '2', E: '3', A: '4', H: '4',
+  S: '5', $: '5', G: '6', C: '6', B: '8', R: '8',
+  P: '9', J: '3', Y: '7'
+};
+
+function digitsOnly(chunk) {
+  let out = '';
+  for (const ch of chunk) {
+    if (ch >= '0' && ch <= '9') out += ch;
+    else if (DIGIT_LOOKALIKES[ch]) out += DIGIT_LOOKALIKES[ch];
+    else return null;
+  }
+  return out;
+}
+
+/** Levenshtein distance, capped - we only care about "is this within 1?". */
+function editDistance(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return 99;
+  const m = a.length, n = b.length;
+  let prev = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/**
+ * Pull an NDX number out of raw OCR text.
+ * Returns {ndx, corrected} or null. `corrected` means the exact characters
+ * read were not on the list but sat one character away from an entry, so the
+ * result needs a human to confirm it rather than being trusted outright.
+ */
 function extractNDX(text) {
-  // Match NDX followed by 7 digits
-  const matches = text.toUpperCase().match(/NDX\s*(\d{7})/g);
-  if (matches && matches.length > 0) {
-    return matches[0].replace(/\s/g, '').toUpperCase();
+  const up = (text || '').toUpperCase();
+  const compact = up.replace(/[^A-Z0-9|!$]/g, '');
+  const candidates = [];
+
+  // Prefix, tolerating an N/D/X that came back as something else.
+  const prefixed = compact.matchAll(/(?:NDX|ND[X%]|N0X|MDX|HDX)([A-Z0-9|!$]{7})/g);
+  for (const m of prefixed) {
+    const digits = digitsOnly(m[1]);
+    if (digits) candidates.push(digits);
   }
-  // Also try partial: N D X + digits
-  const loose = text.toUpperCase().replace(/[^NDX0-9]/g, '');
-  const m2 = loose.match(/NDX(\d{7})/);
-  if (m2) return 'NDX' + m2[1];
-  return null;
+
+  // Bare 7-digit runs - the prefix is constant, so it is not worth losing a
+  // read over. Longer runs are windowed in case a stray digit got attached.
+  for (const m of compact.matchAll(/[0-9]{7,9}/g)) {
+    const run = m[0];
+    for (let i = 0; i + 7 <= run.length; i++) candidates.push(run.slice(i, i + 7));
+  }
+
+  if (!candidates.length) return null;
+
+  // Prefer an exact list hit, then a one-character near miss, then whatever
+  // we read first.
+  for (const c of candidates) {
+    if (NOT_COLLECTED.has('NDX' + c)) return { ndx: 'NDX' + c, corrected: false };
+  }
+  for (const c of candidates) {
+    for (const known of NOT_COLLECTED) {
+      if (editDistance('NDX' + c, known) === 1) {
+        return { ndx: known, corrected: true, raw: 'NDX' + c };
+      }
+    }
+  }
+  return { ndx: 'NDX' + candidates[0], corrected: false };
 }
 
 // ============ RESULT DISPLAY ============
-function showResult(ndx) {
+function showResult(ndx, corrected) {
   const isMatch = NOT_COLLECTED.has(ndx);
   const box = document.getElementById('resultBox');
-  box.className = 'result-box ' + (isMatch ? 'match' : 'no-match');
-  document.getElementById('resultIcon').textContent = isMatch ? '✅' : '➡️';
+
+  // A corrected read was one character off a listed number. It is probably
+  // right, but "probably" is not good enough to act on unprompted, so it gets
+  // its own colour and asks the user to confirm against the form.
+  box.className = 'result-box ' + (corrected ? 'near' : (isMatch ? 'match' : 'no-match'));
+  document.getElementById('resultIcon').textContent =
+    corrected ? '🔍' : (isMatch ? '✅' : '➡️');
   document.getElementById('resultNdx').textContent = ndx;
-  document.getElementById('resultMsg').textContent = isMatch
-    ? 'Found in Not Collected list!'
-    : 'Not in Not Collected list';
-  document.getElementById('resultAction').textContent = isMatch
-    ? '📂 SEPARATE THIS FORM'
-    : '📋 KEEP IN BUNDLE';
+  document.getElementById('resultMsg').textContent = corrected
+    ? 'Close match — check this against the form'
+    : (isMatch ? 'Found in Not Collected list!' : 'Not in Not Collected list');
+  document.getElementById('resultAction').textContent = corrected
+    ? '❓ CONFIRM, THEN SEPARATE'
+    : (isMatch ? '📂 SEPARATE THIS FORM' : '📋 KEEP IN BUNDLE');
   box.style.display = 'block';
   box.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  addHistory(ndx, isMatch);
+  addHistory(ndx, isMatch, corrected);
   vibrate(isMatch);
 }
 
@@ -564,7 +754,7 @@ function manualCheck() {
   if (!val.startsWith('NDX')) val = 'NDX' + val.replace(/^NDX/i, '');
 
   document.getElementById('manualInput').value = '';
-  showResult(val);
+  showResult(val, false);
 }
 
 document.getElementById('manualInput').addEventListener('keydown', e => {
@@ -582,8 +772,8 @@ function vibrate(isMatch) {
 }
 
 // ============ HISTORY ============
-function addHistory(ndx, isMatch) {
-  history.unshift({ ndx, isMatch, time: new Date().toLocaleTimeString() });
+function addHistory(ndx, isMatch, corrected) {
+  history.unshift({ ndx, isMatch, corrected: !!corrected, time: new Date().toLocaleTimeString() });
   if (history.length > 20) history.pop();
   saveHistory();
   renderHistory();
@@ -598,7 +788,7 @@ function renderHistory() {
     <div class="history-item">
       <span class="ndx">${h.ndx}</span>
       <span style="color:#aaa;font-size:11px">${h.time}</span>
-      <span class="tag ${h.isMatch ? 'match' : 'no-match'}">${h.isMatch ? 'SEPARATE' : 'KEEP'}</span>
+      <span class="tag ${h.isMatch ? 'match' : 'no-match'}">${h.isMatch ? 'SEPARATE' : 'KEEP'}${h.corrected ? '?' : ''}</span>
     </div>
   `).join('');
 }
