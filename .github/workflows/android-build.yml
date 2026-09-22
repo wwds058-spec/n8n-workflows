@@ -21,9 +21,15 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The default package set still asks for the retired "tools" package,
+          # which sdkmanager no longer serves.
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
 
       - name: Build debug APK
         working-directory: android
