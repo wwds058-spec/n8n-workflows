@@ -7,6 +7,9 @@ on:
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -34,6 +37,22 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle --no-daemon assembleDebug
+
+      # Park the built APK on its own single-commit branch so it can be pulled
+      # with plain git, without going through the Actions artifact store.
+      - name: Push APK to the apk-build branch
+        run: |
+          workdir=$(mktemp -d)
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$workdir/ECI-NDX-Scanner.apk"
+          cd "$workdir"
+          echo "Debug APK of the ECI NDX Scanner, built from ${{ github.sha }}." > README.md
+          git init -q
+          git checkout -q -b apk-build
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git add -A
+          git commit -q -m "ECI NDX Scanner debug APK from ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" apk-build
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
