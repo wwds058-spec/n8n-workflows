@@ -51,8 +51,13 @@ Requires JDK 17 and the Android SDK (compileSdk 34).
 
 ```bash
 cd android
-./gradlew assembleDebug      # or: gradle assembleDebug
+gradle wrapper               # one-time: generates ./gradlew
+./gradlew assembleDebug
 ```
+
+(The wrapper JAR is not checked in, so generate it once with `gradle wrapper` — or
+just run `gradle assembleDebug` directly, or open `android/` in Android Studio and hit
+Run.)
 
 The APK lands in `app/build/outputs/apk/debug/app-debug.apk`. Copy it to the phone and
 install it (you will need "install unknown apps" enabled for your file manager).
