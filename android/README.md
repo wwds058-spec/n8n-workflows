@@ -16,7 +16,7 @@ connection. This build bundles everything into the APK:
 | `app/src/main/assets/tess/worker.min.js` | OCR web worker |
 | `app/src/main/assets/tess/tesseract-core-simd-lstm.wasm.js` | OCR engine (SIMD) |
 | `app/src/main/assets/tess/tesseract-core-lstm.wasm.js` | OCR engine (fallback) |
-| `app/src/main/assets/tess/eng.traineddata.gz` | English language model |
+| `app/src/main/assets/tess/eng.traineddata` | English language model |
 
 Nothing leaves the device and no network permission is declared — useful for field
 work with no signal.

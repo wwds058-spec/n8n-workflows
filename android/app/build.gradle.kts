@@ -25,7 +25,7 @@ android {
     // The OCR model and wasm payloads are already compressed; leave them alone so
     // they can be streamed straight out of the APK.
     androidResources {
-        noCompress += listOf("gz", "traineddata", "wasm")
+        noCompress += listOf("traineddata", "wasm")
     }
 
     compileOptions {

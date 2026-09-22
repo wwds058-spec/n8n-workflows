@@ -416,7 +416,9 @@ function getOcrWorker() {
       workerPath: 'tess/worker.min.js',
       corePath: 'tess/',
       langPath: 'tess/',
-      gzip: true,
+      // Shipped uncompressed: the Android build gunzips .gz assets and drops
+      // the extension, so a .gz here would never be found at runtime.
+      gzip: false,
       cacheMethod: 'none'
     });
     await worker.setParameters({
