@@ -1,0 +1,45 @@
+name: Android Assistant
+
+on:
+  push:
+    paths:
+      - "personal-ai-assistant/**"
+      - ".github/workflows/android-assistant.yml"
+  pull_request:
+    paths:
+      - "personal-ai-assistant/**"
+      - ".github/workflows/android-assistant.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test core and build debug APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: personal-ai-assistant
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (core)
+        run: ./gradlew :core:test --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-ai-assistant-debug-apk
+          path: personal-ai-assistant/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
