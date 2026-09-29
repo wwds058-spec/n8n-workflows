@@ -7,8 +7,11 @@ import com.personalai.assistant.AssistantApp
 import com.personalai.assistant.agent.AnthropicGateway
 import com.personalai.assistant.core.ActionRequest
 import com.personalai.assistant.core.ActionStatus
+import com.personalai.assistant.core.ChatTurn
 import com.personalai.assistant.core.PermissionLevel
 import com.personalai.assistant.core.Provider
+import com.personalai.assistant.data.ChatMessageEntity
+import com.personalai.assistant.data.MemoryEntity
 import com.personalai.assistant.data.Settings
 import com.personalai.assistant.voice.Speaker
 import com.personalai.assistant.voice.SpeechInput
@@ -78,6 +81,27 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         voiceMode = { voiceTurn && settings.value.voiceReplies },
     )
 
+    private val chatDao = container.database.chatMessages()
+
+    init {
+        // Bring back the previous conversation, for the screen and for the AI's context.
+        _busy.value = true
+        viewModelScope.launch {
+            try {
+                val saved = chatDao.recent(MAX_SAVED_MESSAGES)
+                _chat.value = saved.mapNotNull { m ->
+                    ChatRole.entries.firstOrNull { it.name == m.role }?.let { ChatItem(it, m.text) }
+                } + _chat.value
+                agent.restore(
+                    saved.filter { it.role == ChatRole.USER.name || it.role == ChatRole.ASSISTANT.name }
+                        .map { ChatTurn(fromUser = it.role == ChatRole.USER.name, text = it.text) },
+                )
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
     fun send(text: String, spoken: Boolean = false) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || _busy.value) return
@@ -143,6 +167,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         agent.reset()
         speaker.stop()
         _chat.value = emptyList()
+        viewModelScope.launch { chatDao.deleteAll() }
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = settingsStore.update(transform)
@@ -181,8 +206,15 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch { container.database.actionLog().deleteAll() }
     }
 
+    fun updateMemory(memory: MemoryEntity) {
+        viewModelScope.launch { container.database.memories().update(memory) }
+    }
+
     private fun append(item: ChatItem) {
         _chat.update { it + item }
+        viewModelScope.launch {
+            chatDao.insert(ChatMessageEntity(role = item.role.name, text = item.text, timestamp = System.currentTimeMillis()))
+        }
     }
 
     override fun onCleared() {
@@ -192,6 +224,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private companion object {
+        const val MAX_SAVED_MESSAGES = 200
+
         /** Successful read-only lookups aren't shown as separate lines in the chat. */
         val QUIET_TOOLS = setOf("find_contact", "read_call_log", "read_calendar")
 

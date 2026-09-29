@@ -52,3 +52,34 @@ class ForgetMemoryTool(private val memories: MemoryDao) : AssistantTool {
         }
     }
 }
+
+class UpdateMemoryTool(private val memories: MemoryDao) : AssistantTool {
+    override val spec = ToolSpec(
+        name = "update_memory",
+        description = "Correct a saved memory by its id. Only the fields given are changed; " +
+            "pass an empty string for person or relationship to clear it.",
+        params = listOf(
+            ToolParam("memory_id", "integer", "Id of the memory"),
+            ToolParam("fact", "string", "Corrected fact", required = false),
+            ToolParam("person", "string", "Contact name this is about", required = false),
+            ToolParam("relationship", "string", "Relationship to the user", required = false),
+        ),
+        level = PermissionLevel.AUTOMATIC,
+    )
+
+    override suspend fun prepare(input: ToolInput): ToolPlan {
+        val id = input.int("memory_id")?.toLong() ?: return reject("memory_id must be a number.")
+        val old = memories.get(id) ?: return reject("There's no memory with id $id.")
+        // ToolInput.string treats "" as absent, so read raw presence for clearing.
+        val updated = old.copy(
+            text = input.string("fact") ?: old.text,
+            person = if (input.has("person")) input.string("person") else old.person,
+            relationship = if (input.has("relationship")) input.string("relationship")?.lowercase() else old.relationship,
+        )
+        if (updated == old) return reject("Nothing to change.")
+        return ToolPlan.Ready("Update memory $id: ${updated.text}") {
+            if (memories.update(updated) == 1) ToolOutcome.Success("Updated memory $id.")
+            else ToolOutcome.Failure("Memory $id couldn't be updated.")
+        }
+    }
+}

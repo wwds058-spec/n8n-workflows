@@ -65,6 +65,20 @@ class OpenAiCompatibleBackend(
         history += json.createObjectNode().put("role", "user").put("content", text)
     }
 
+    override fun addAssistantText(text: String) {
+        history += json.createObjectNode().put("role", "assistant").put("content", text)
+    }
+
+    override fun keepLastTurns(turns: Int) {
+        val starts = history.indices.filter { history[it].path("role").asText() == "user" }
+        if (starts.size <= turns) return
+        if (turns <= 0) {
+            history.clear()
+            return
+        }
+        repeat(starts[starts.size - turns]) { history.removeAt(0) }
+    }
+
     override fun addToolResults(results: List<ToolResult>) {
         results.forEach { r ->
             history += json.createObjectNode()

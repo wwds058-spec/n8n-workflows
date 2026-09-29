@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.personalai.assistant.AppContainer
 import com.personalai.assistant.core.AnthropicOptions
+import com.personalai.assistant.data.MemoryEntity
 import com.personalai.assistant.core.Provider
 import java.text.DateFormat
 import java.util.Date
@@ -211,6 +213,7 @@ private fun ChatBubble(item: ChatItem) {
 fun MemoryScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
     val memories by vm.memories.collectAsStateWithLifecycle(initialValue = emptyList())
     var confirmClear by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<MemoryEntity?>(null) }
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -231,6 +234,9 @@ fun MemoryScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
                             val tag = listOfNotNull(m.person, m.relationship).joinToString(" · ")
                             if (tag.isNotEmpty()) Text(tag, style = MaterialTheme.typography.bodySmall)
                         }
+                        IconButton(onClick = { editing = m }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit memory")
+                        }
                         IconButton(onClick = { vm.deleteMemory(m.id) }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete memory")
                         }
@@ -238,6 +244,42 @@ fun MemoryScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+
+    editing?.let { memory ->
+        var text by remember(memory.id) { mutableStateOf(memory.text) }
+        var person by remember(memory.id) { mutableStateOf(memory.person.orEmpty()) }
+        var relationship by remember(memory.id) { mutableStateOf(memory.relationship.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("Edit memory") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Fact") })
+                    OutlinedTextField(value = person, onValueChange = { person = it }, label = { Text("Person (contact name)") }, singleLine = true)
+                    OutlinedTextField(
+                        value = relationship, onValueChange = { relationship = it },
+                        label = { Text("Relationship (e.g. father, business partner)") }, singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = text.isNotBlank(),
+                    onClick = {
+                        vm.updateMemory(
+                            memory.copy(
+                                text = text.trim(),
+                                person = person.trim().ifEmpty { null },
+                                relationship = relationship.trim().lowercase().ifEmpty { null },
+                            ),
+                        )
+                        editing = null
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } },
+        )
     }
 
     if (confirmClear) {
@@ -255,11 +297,12 @@ fun MemoryScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
 fun ActivityScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
     val entries by vm.activity.collectAsStateWithLifecycle(initialValue = emptyList())
     val format = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    var confirmClear by remember { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Activity", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            if (entries.isNotEmpty()) TextButton(onClick = vm::clearActivity) { Text("Clear") }
+            if (entries.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Clear") }
         }
         Text(
             "Every action the assistant took or tried to take, including ones you declined.",
@@ -283,6 +326,16 @@ fun ActivityScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear activity history?") },
+            text = { Text("The record of actions the assistant took will be deleted. This can't be undone.") },
+            confirmButton = { TextButton(onClick = { vm.clearActivity(); confirmClear = false }) { Text("Clear") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+        )
     }
 }
 

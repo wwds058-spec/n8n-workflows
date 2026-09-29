@@ -52,6 +52,9 @@ interface MemoryDao {
     @Insert
     suspend fun insert(memory: MemoryEntity): Long
 
+    @Update
+    suspend fun update(memory: MemoryEntity): Int
+
     @Query("DELETE FROM memories WHERE id = :id")
     suspend fun delete(id: Long): Int
 
@@ -114,6 +117,59 @@ data class ScreenedCallEntity(
     val ruleName: String?,
     val reason: String,
 )
+
+/** A reminder scheduled with WorkManager; [workId] identifies the scheduled job. */
+@Entity(tableName = "reminders")
+data class ReminderEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val text: String,
+    val triggerAt: Long,
+    val workId: String,
+    /** SCHEDULED, DONE or CANCELLED. */
+    val status: String,
+    val createdAt: Long,
+)
+
+/** A message shown in the assistant chat, kept so the conversation survives restarts. */
+@Entity(tableName = "chat_messages")
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** USER, ASSISTANT, ACTION or ERROR. */
+    val role: String,
+    val text: String,
+    val timestamp: Long,
+)
+
+@Dao
+interface ReminderDao {
+    @Query("SELECT * FROM reminders WHERE status = 'SCHEDULED' ORDER BY triggerAt")
+    suspend fun upcoming(): List<ReminderEntity>
+
+    @Query("SELECT * FROM reminders ORDER BY triggerAt DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<ReminderEntity>
+
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun get(id: Long): ReminderEntity?
+
+    @Insert
+    suspend fun insert(reminder: ReminderEntity): Long
+
+    @Query("UPDATE reminders SET status = :status WHERE id = :id")
+    suspend fun setStatus(id: Long, status: String): Int
+}
+
+@Dao
+interface ChatMessageDao {
+    /** The most recent messages, oldest first. */
+    @Query("SELECT * FROM (SELECT * FROM chat_messages ORDER BY id DESC LIMIT :limit) ORDER BY id")
+    suspend fun recent(limit: Int): List<ChatMessageEntity>
+
+    @Insert
+    suspend fun insert(message: ChatMessageEntity): Long
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun deleteAll()
+}
 
 @Dao
 interface CallerCategoryDao {
@@ -179,8 +235,10 @@ interface ScreenedCallDao {
         CallerCategoryEntity::class,
         CallRuleEntity::class,
         ScreenedCallEntity::class,
+        ReminderEntity::class,
+        ChatMessageEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -189,6 +247,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun callerCategories(): CallerCategoryDao
     abstract fun callRules(): CallRuleDao
     abstract fun screenedCalls(): ScreenedCallDao
+    abstract fun reminders(): ReminderDao
+    abstract fun chatMessages(): ChatMessageDao
 
     companion object {
         /** Version 2 adds call screening. Existing memories and activity are kept. */
@@ -215,9 +275,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 3 adds saved reminders and chat history. Existing data is kept. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `reminders` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `text` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, " +
+                        "`workId` TEXT NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `chat_messages` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `role` TEXT NOT NULL, `text` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "assistant.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

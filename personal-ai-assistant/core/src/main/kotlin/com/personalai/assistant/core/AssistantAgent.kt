@@ -12,6 +12,8 @@ data class AgentConfig(
     /** Let the model search the web, when the selected service supports it. */
     val webSearch: Boolean = true,
     val maxSteps: Int = 10,
+    /** How many recent exchanges the model sees; older ones are dropped to bound the context. */
+    val maxHistoryTurns: Int = 20,
 )
 
 /** Something the agent did (or tried to do) while handling a request. */
@@ -41,16 +43,31 @@ class AssistantAgent(
     private val lock = Mutex()
     private var active: ChatBackend? = null
 
+    /** Saved turns to load into the next backend used, e.g. after the app restarts. */
+    private var pendingRestore: List<ChatTurn> = emptyList()
+
     fun reset() {
         active?.reset()
+        pendingRestore = emptyList()
+    }
+
+    /** Rebuilds the model's view of an earlier conversation from saved text messages. */
+    fun restore(turns: List<ChatTurn>) {
+        // A conversation must start with the user.
+        pendingRestore = turns.filter { it.text.isNotBlank() }.dropWhile { !it.fromUser }
+        active = null
     }
 
     suspend fun send(userText: String): AgentReply = lock.withLock {
         val b = backend()
         if (b !== active) {
             b.reset()
+            pendingRestore.forEach { if (it.fromUser) b.addUserText(it.text) else b.addAssistantText(it.text) }
+            pendingRestore = emptyList()
             active = b
         }
+        // Keep room for the turn about to start.
+        b.keepLastTurns((config().maxHistoryTurns - 1).coerceAtLeast(0))
         val checkpoint = b.checkpoint()
         try {
             runTurn(b, userText)

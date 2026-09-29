@@ -23,6 +23,10 @@ see [Limits](#limits).
 | "What's on my calendar today?" | Reads calendar events | 1 – automatic |
 | "Create a meeting tomorrow at 10" | Adds a calendar event | 3 – always asks |
 | "Remind me tomorrow at 10 AM to call Ahmed" | Schedules a notification | 1 – automatic |
+| "What reminders do I have?" / "Cancel the Ahmed reminder" | Lists saved reminders / cancels one | 1 / 2 – asks first by default |
+| "Move my 4 PM meeting to 5 PM" | Changes a calendar event (not repeating events) | 3 – always asks |
+| "Delete tomorrow's dentist appointment" | Deletes a calendar event | 4 – always asks |
+| "Ahmed is actually my cousin, update that" | Corrects a saved memory (also editable on the Memory screen) | 1 – automatic |
 | "Open WhatsApp" | Launches the app | 2 – asks first by default |
 | "Remember that Ahmed is my business partner" | Saves a memory; "call my business partner" then works | 1 – automatic |
 | "Forget memory 4" | Deletes a memory | 4 – always asks, can't be changed |
@@ -30,6 +34,13 @@ see [Limits](#limits).
 
 A failed action is always reported as failed. The agent only claims success when the tool
 returned success. For example, an SMS counts as sent only after the phone radio confirms it.
+
+## Conversation history
+
+The chat is saved on the phone and comes back after the app restarts, including for the
+AI. The AI sees the last 20 exchanges; older ones stay on screen but are left out of its
+context so long chats keep working. **+** starts a fresh conversation and deletes the
+saved one.
 
 ## Call screening (Android 10+)
 
@@ -139,6 +150,7 @@ cd personal-ai-assistant
 - **WhatsApp:** it can open WhatsApp, but there's no official API to send messages from a
   personal account.
 - **Reminders** use WorkManager. Android may deliver them a few minutes late when the
-  phone is in deep sleep.
+  phone is in deep sleep. Reminders created before version 0.3.0 aren't listed.
+- **Repeating calendar events** can't be changed or deleted by the assistant.
 - This is a debug build for personal use. It isn't prepared for the Play Store: Google Play
   restricts apps that request SMS and call-log permissions.

@@ -164,4 +164,16 @@ class OpenAiCompatibleBackendTest {
         assertEquals(listOf("gemini-2.5-flash", "gemini-2.5-pro"), backend(transport).listModels())
         assertEquals(null, transport.requests.single().second) // GET
     }
+
+    @Test
+    fun `keepLastTurns drops whole turns from the front`() {
+        val b = backend(ScriptedTransport())
+        b.addUserText("u1"); b.addAssistantText("a1")
+        b.addUserText("u2"); b.addToolResults(listOf(ToolResult("c1", "x", "r", false))); b.addAssistantText("a2")
+        b.addUserText("u3")
+        b.keepLastTurns(2)
+        assertEquals(4, b.checkpoint()) // u2, tool result, a2, u3
+        b.keepLastTurns(0)
+        assertEquals(0, b.checkpoint())
+    }
 }

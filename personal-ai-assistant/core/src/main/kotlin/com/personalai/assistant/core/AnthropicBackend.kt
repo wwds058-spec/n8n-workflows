@@ -57,6 +57,23 @@ class AnthropicBackend(
         history += BetaMessageParam.builder().role(BetaMessageParam.Role.USER).content(text).build()
     }
 
+    override fun addAssistantText(text: String) {
+        history += BetaMessageParam.builder().role(BetaMessageParam.Role.ASSISTANT).content(text).build()
+    }
+
+    override fun keepLastTurns(turns: Int) {
+        // Turns start with a user message whose content is plain text (tool results are blocks).
+        val starts = history.indices.filter { i ->
+            history[i].role() == BetaMessageParam.Role.USER && history[i].content().isString()
+        }
+        if (starts.size <= turns) return
+        if (turns <= 0) {
+            history.clear()
+            return
+        }
+        repeat(starts[starts.size - turns]) { history.removeAt(0) }
+    }
+
     override fun addToolResults(results: List<ToolResult>) {
         val blocks = results.map { r ->
             BetaContentBlockParam.ofToolResult(

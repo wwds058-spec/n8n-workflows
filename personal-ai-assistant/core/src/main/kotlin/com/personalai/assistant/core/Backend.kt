@@ -17,6 +17,9 @@ enum class Provider(
 /** A tool the model asked to run. [input] is null when the model sent something that isn't a JSON object. */
 data class ToolCall(val id: String, val name: String, val input: Map<String, Any?>?)
 
+/** A saved chat message used to rebuild the conversation after a restart. */
+data class ChatTurn(val fromUser: Boolean, val text: String)
+
 data class ToolResult(val callId: String, val toolName: String, val content: String, val isError: Boolean)
 
 enum class StopKind {
@@ -66,6 +69,15 @@ interface ChatBackend {
     fun rollback(to: Int)
 
     fun addUserText(text: String)
+
+    /** Adds a plain assistant reply, used when restoring a saved conversation. */
+    fun addAssistantText(text: String)
+
+    /**
+     * Drops the oldest turns so at most [turns] remain. A turn starts with a user text
+     * message, so a tool call is never separated from its result.
+     */
+    fun keepLastTurns(turns: Int)
 
     fun addToolResults(results: List<ToolResult>)
 

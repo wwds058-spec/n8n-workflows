@@ -223,4 +223,54 @@ class AssistantAgentTest {
         assertEquals(1, asked.size)
         assertEquals(0, tool.runs)
     }
+
+    private fun plainAgent(gateway: MessageGateway, maxTurns: Int, tool: AssistantTool) = AssistantAgent(
+        backend = AnthropicBackend(gateway) { AnthropicOptions() }.let { b -> { b } },
+        tools = ToolRegistry(listOf(tool)),
+        confirmations = { true },
+        logger = { },
+        policy = { PermissionPolicy() },
+        config = { AgentConfig(webSearch = false, maxHistoryTurns = maxTurns) },
+        context = { PromptContext("Yasin", "Personal AI", emptyList(), voiceMode = false) },
+    )
+
+    @Test
+    fun `restored conversation is sent before the new message`() = runTest {
+        val gateway = ScriptedGateway(message("end_turn", text("Sure.")))
+        val agent = plainAgent(gateway, 20, FakeTool("x", PermissionLevel.AUTOMATIC))
+        agent.restore(
+            listOf(
+                ChatTurn(fromUser = false, text = "orphan reply is dropped"),
+                ChatTurn(fromUser = true, text = "Remind me about Ravi"),
+                ChatTurn(fromUser = false, text = "Done."),
+            ),
+        )
+        agent.send("And Ahmed too")
+        val msgs = gateway.requests.single().messages()
+        assertEquals(3, msgs.size)
+        assertEquals("Remind me about Ravi", msgs[0].content().asString())
+        assertEquals("Done.", msgs[1].content().asString())
+    }
+
+    @Test
+    fun `old turns are dropped but tool exchanges stay whole`() = runTest {
+        val gateway = ScriptedGateway(
+            // Turn 1 uses a tool.
+            message("tool_use", toolUse("tu_1", "x", "a")),
+            message("end_turn", text("one")),
+            message("end_turn", text("two")),
+            message("end_turn", text("three")),
+        )
+        val agent = plainAgent(gateway, 2, FakeTool("x", PermissionLevel.AUTOMATIC))
+        agent.send("first")
+        agent.send("second")
+        agent.send("third")
+
+        // The third request holds turn 2 (user + assistant) and the new user message only.
+        val third = gateway.requests.last().messages()
+        assertEquals(3, third.size)
+        assertTrue(third[0].content().isString())
+        assertTrue(third[0].content().asString().endsWith("second"))
+        assertTrue(third[2].content().asString().endsWith("third"))
+    }
 }

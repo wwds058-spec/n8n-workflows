@@ -25,12 +25,15 @@ import com.personalai.assistant.data.ActionLogEntity
 import com.personalai.assistant.data.AppDatabase
 import com.personalai.assistant.data.SettingsStore
 import com.personalai.assistant.tools.CallContactTool
+import com.personalai.assistant.tools.CancelReminderTool
 import com.personalai.assistant.tools.ContactsRepository
 import com.personalai.assistant.tools.CreateCalendarEventTool
 import com.personalai.assistant.tools.CreateReminderTool
+import com.personalai.assistant.tools.DeleteCalendarEventTool
 import com.personalai.assistant.tools.FindContactTool
 import com.personalai.assistant.tools.ForgetMemoryTool
 import com.personalai.assistant.tools.ListCallerCategoriesTool
+import com.personalai.assistant.tools.ListRemindersTool
 import com.personalai.assistant.tools.OpenAppTool
 import com.personalai.assistant.tools.ReadCalendarTool
 import com.personalai.assistant.tools.ReadCallLogTool
@@ -39,6 +42,8 @@ import com.personalai.assistant.tools.ReminderWorker
 import com.personalai.assistant.tools.SaveMemoryTool
 import com.personalai.assistant.tools.SendSmsTool
 import com.personalai.assistant.tools.SetCallerCategoryTool
+import com.personalai.assistant.tools.UpdateCalendarEventTool
+import com.personalai.assistant.tools.UpdateMemoryTool
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -79,10 +84,15 @@ class AppContainer(context: Context) {
         ReadCallLogTool(app),
         SendSmsTool(app, contacts),
         OpenAppTool(app),
-        CreateReminderTool(app),
+        CreateReminderTool(app, database.reminders()),
+        ListRemindersTool(database.reminders()),
+        CancelReminderTool(app, database.reminders()),
         ReadCalendarTool(app),
         CreateCalendarEventTool(app),
+        UpdateCalendarEventTool(app),
+        DeleteCalendarEventTool(app),
         SaveMemoryTool(database.memories()),
+        UpdateMemoryTool(database.memories()),
         ForgetMemoryTool(database.memories()),
         ReadScreenedCallsTool(callScreening),
         ListCallerCategoriesTool(callScreening),

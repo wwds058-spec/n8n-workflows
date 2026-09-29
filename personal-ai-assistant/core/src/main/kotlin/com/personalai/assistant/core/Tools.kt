@@ -62,6 +62,9 @@ interface AssistantTool {
 /** Typed access to the JSON object the model sent as tool input. */
 class ToolInput(private val values: Map<String, Any?>) {
 
+    /** True if the model sent this input at all, even as an empty string. */
+    fun has(name: String): Boolean = values.containsKey(name)
+
     fun string(name: String): String? =
         values[name]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
 
