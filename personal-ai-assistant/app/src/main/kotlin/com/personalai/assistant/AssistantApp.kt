@@ -46,6 +46,8 @@ import com.personalai.assistant.tools.SendSmsTool
 import com.personalai.assistant.tools.SetCallerCategoryTool
 import com.personalai.assistant.tools.UpdateCalendarEventTool
 import com.personalai.assistant.tools.UpdateMemoryTool
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -53,12 +55,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class AssistantApp : Application() {
-    lateinit var container: AppContainer
-        private set
+    /** Created on first use, so a failure here can still be shown on the crash screen. */
+    val container: AppContainer by lazy { AppContainer(this) }
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        CrashLog.install(this)
         ReminderWorker.ensureChannel(this)
         CallScreeningRepository.ensureChannel(this)
     }
@@ -73,8 +75,13 @@ class AppContainer(context: Context) {
     val database: AppDatabase = openedDatabase.first
     val encryptionStatus: EncryptionStatus = openedDatabase.second
 
-    /** For work that must finish even if the screen that started it goes away. */
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * For work that must finish even if the screen that started it goes away. A failure here
+     * is logged instead of closing the app.
+     */
+    val appScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> Log.e("PersonalAI", "Background task failed", e) },
+    )
 
     private val contacts = ContactsRepository(app, database.memories())
 

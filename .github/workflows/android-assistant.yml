@@ -81,10 +81,16 @@ jobs:
         run: echo "::warning::No signing secrets set, so only the debug APK was built. See personal-ai-assistant/README.md, 'Permanent signing key'."
 
   smoke-test:
-    name: Launch on an emulator
+    name: Launch on an emulator (API ${{ matrix.api }})
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 34]
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: personal-ai-assistant-debug-apk
@@ -96,20 +102,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install, launch and check for crashes
+      - name: Walk through the app and check for crashes
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: |
-            adb install -r apk/*.apk
-            adb logcat -c
-            adb shell am start -W -n com.personalai.assistant/.ui.MainActivity
-            sleep 20
-            adb logcat -d -b crash > crash.txt || true
-            adb logcat -d | grep -E "AndroidRuntime|FATAL|personalai" | tail -200 || true
-            cat crash.txt
-            adb shell pidof com.personalai.assistant
-            ! grep -q "FATAL EXCEPTION" crash.txt
+          script: sh personal-ai-assistant/scripts/smoke-test.sh apk

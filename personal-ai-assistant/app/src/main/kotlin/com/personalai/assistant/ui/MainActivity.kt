@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.fragment.app.FragmentActivity
+import com.personalai.assistant.CrashLog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.personalai.assistant.core.PermissionLevel
 
@@ -51,6 +52,18 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // After a crash, show what went wrong before touching anything that might crash again.
+        CrashLog.read(this)?.let { report ->
+            setContent {
+                AppTheme {
+                    CrashScreen(report) {
+                        CrashLog.clear(this)
+                        recreate()
+                    }
+                }
+            }
+            return
+        }
         // Stay unlocked across rotation; lock on a fresh start.
         locked = lockEnabled && savedInstanceState?.getBoolean(KEY_UNLOCKED) != true
         setContent {

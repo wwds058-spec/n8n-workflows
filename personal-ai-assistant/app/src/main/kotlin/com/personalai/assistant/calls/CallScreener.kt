@@ -1,6 +1,7 @@
 package com.personalai.assistant.calls
 
 import android.os.Build
+import android.util.Log
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import com.personalai.assistant.AssistantApp
@@ -35,16 +36,21 @@ class CallScreener : CallScreeningService() {
         // Telecom waits only a few seconds for an answer, so decide quickly and fall back
         // to letting the call ring. The history write and notification happen afterwards.
         container.appScope.launch {
-            val result = withTimeoutOrNull(DECISION_TIMEOUT_MS) {
-                val caller = repo.identify(raw)
-                caller to repo.decide(caller)
+            val result = try {
+                withTimeoutOrNull(DECISION_TIMEOUT_MS) {
+                    val caller = repo.identify(raw)
+                    caller to repo.decide(caller)
+                }
+            } catch (e: Exception) {
+                Log.e("PersonalAI", "Call screening failed", e)
+                null
             }
             val caller = result?.first ?: IncomingCaller(raw)
             val decision = result?.second ?: ScreeningDecision(
                 ScreeningAction.ALLOW,
                 notify = true,
                 ruleName = null,
-                reason = "Screening took too long, so the call rang normally.",
+                reason = "Screening didn't finish, so the call rang normally.",
             )
             val applied = applicable(decision)
             respondToCall(callDetails, response(applied.action))
