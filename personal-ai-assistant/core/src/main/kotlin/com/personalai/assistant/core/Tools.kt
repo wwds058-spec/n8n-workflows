@@ -34,9 +34,14 @@ sealed interface ToolOutcome {
  * name to a phone number) so the confirmation dialog can show exactly what will happen.
  */
 sealed interface ToolPlan {
-    /** Ready to run. [preview] is shown to the user when confirmation is required. */
+    /**
+     * Ready to run. [preview] is shown to the user when confirmation is required.
+     * [alwaysConfirm] asks the user even if their settings let this tool run
+     * automatically, for risky inputs such as dialing a number that isn't in contacts.
+     */
     class Ready(
         val preview: String,
+        val alwaysConfirm: Boolean = false,
         val run: suspend () -> ToolOutcome,
     ) : ToolPlan
 

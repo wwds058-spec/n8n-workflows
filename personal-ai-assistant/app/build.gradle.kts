@@ -7,6 +7,10 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Release signing key, supplied by CI from GitHub secrets (never committed). Without it the
+// release APK is unsigned; debug builds are unaffected.
+val releaseKeystore: File? = System.getenv("SIGNING_KEYSTORE_PATH")?.let { file(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "com.personalai.assistant"
     compileSdk = 35
@@ -15,13 +19,25 @@ android {
         applicationId = "com.personalai.assistant"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 

@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import com.personalai.assistant.agent.AnthropicGateway
+import com.personalai.assistant.calls.CallScreeningRepository
 import com.personalai.assistant.core.ActionLogger
 import com.personalai.assistant.core.AgentConfig
 import com.personalai.assistant.core.AnthropicBackend
@@ -29,12 +30,18 @@ import com.personalai.assistant.tools.CreateCalendarEventTool
 import com.personalai.assistant.tools.CreateReminderTool
 import com.personalai.assistant.tools.FindContactTool
 import com.personalai.assistant.tools.ForgetMemoryTool
+import com.personalai.assistant.tools.ListCallerCategoriesTool
 import com.personalai.assistant.tools.OpenAppTool
 import com.personalai.assistant.tools.ReadCalendarTool
 import com.personalai.assistant.tools.ReadCallLogTool
+import com.personalai.assistant.tools.ReadScreenedCallsTool
 import com.personalai.assistant.tools.ReminderWorker
 import com.personalai.assistant.tools.SaveMemoryTool
 import com.personalai.assistant.tools.SendSmsTool
+import com.personalai.assistant.tools.SetCallerCategoryTool
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -46,6 +53,7 @@ class AssistantApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         ReminderWorker.ensureChannel(this)
+        CallScreeningRepository.ensureChannel(this)
     }
 }
 
@@ -56,7 +64,14 @@ class AppContainer(context: Context) {
     val settings = SettingsStore(app)
     val database = AppDatabase.create(app)
 
+    /** For work that must finish even if the screen that started it goes away. */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val contacts = ContactsRepository(app, database.memories())
+
+    val callScreening = CallScreeningRepository(app, database, contacts).also { repo ->
+        appScope.launch { repo.ensureDefaultRules() }
+    }
 
     val tools: List<AssistantTool> = listOf(
         FindContactTool(contacts),
@@ -69,6 +84,9 @@ class AppContainer(context: Context) {
         CreateCalendarEventTool(app),
         SaveMemoryTool(database.memories()),
         ForgetMemoryTool(database.memories()),
+        ReadScreenedCallsTool(callScreening),
+        ListCallerCategoriesTool(callScreening),
+        SetCallerCategoryTool(callScreening, contacts),
     )
 
     private val anthropic = AnthropicBackend(AnthropicGateway { settings.current.keyFor(Provider.ANTHROPIC) }) {

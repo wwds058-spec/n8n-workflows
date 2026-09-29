@@ -123,7 +123,7 @@ class AssistantAgent(
                 return result(plan.outcome.message, isError = true)
             }
             is ToolPlan.Ready -> {
-                if (policy().requiresConfirmation(tool.spec)) {
+                if (plan.alwaysConfirm || policy().requiresConfirmation(tool.spec)) {
                     val approved = confirmations.confirm(
                         ActionRequest(tool.spec.name, tool.spec.description.substringBefore('.'), plan.preview, tool.spec.level),
                     )

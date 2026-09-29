@@ -16,7 +16,7 @@ see [Limits](#limits).
 
 | You say | What happens | Permission level |
 |---|---|---|
-| "Call Ahmed" / "Call my father" | Finds the contact (including relationships you taught it and words like *nanna*, *amma*, *abba*) and dials | 2 – asks first by default; can be set to automatic |
+| "Call Ahmed" / "Call my father" | Finds the contact (including relationships you taught it and words like *nanna*, *amma*, *abba*) and dials | 2 – asks first by default; can be set to automatic. Numbers not in your contacts always ask. |
 | "Call the last person who called me" | Reads the call log, then dials | 1 + 2 |
 | "Who called me while I was sleeping?" | Reads the call log for that time range | 1 – automatic |
 | "Send Ravi a message saying I'll call him tomorrow" | Shows the exact text and recipient, sends the SMS, waits for the network to confirm delivery to the carrier | 3 – always asks |
@@ -30,6 +30,32 @@ see [Limits](#limits).
 
 A failed action is always reported as failed. The agent only claims success when the tool
 returned success. For example, an SMS counts as sent only after the phone radio confirms it.
+
+## Call screening (Android 10+)
+
+Open the **Calls** tab and tap **Turn on call screening**. Android asks you to make
+Personal AI your "caller ID & spam" app. From then on, while an incoming call rings, the
+app looks up the number in your contacts, your remembered relationships and your caller
+categories, and applies the first matching rule:
+
+| Default rule | Action |
+|---|---|
+| Blocked numbers | Reject + notify |
+| Spam | Silence + notify |
+| Important callers | Ring + notify |
+| Contacts | Ring |
+| Hidden numbers | Ring + notify |
+| Unknown callers | Ring + notify |
+
+Rules can be edited, turned off or added (IF condition [AND/OR condition] THEN ring /
+silence / reject, optionally notify). Every screened call is listed under **Calls →
+History** with the caller, category, decision, time and reason. The assistant can also
+read that history and set categories ("mark 98765 43210 as spam"), always after you
+confirm.
+
+Limits: screening can only let a call ring, silence it or reject it. It does not answer
+calls, record them, or talk to callers. Android usually doesn't pass calls from saved
+contacts to a screening app, so those ring normally without being screened.
 
 ## How it's built
 
@@ -82,6 +108,15 @@ personal-ai-assistant/
    - Tap **Grant phone permissions**.
    - Optionally set your name and a speech language (`en-IN`, `te-IN`, `hi-IN`, …).
 4. Go to **Assistant** and tap the mic, or type.
+
+## Permanent signing key
+
+Release APKs are signed with a permanent key so updates install over the old version and
+keep your data. The key is stored only in GitHub's encrypted secrets
+(`SIGNING_KEYSTORE_BASE64`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`,
+`SIGNING_KEY_PASSWORD`), never in the repository. With the secrets set, CI also uploads
+`personal-ai-assistant-release-apk`; install that one. Switching from the old debug build
+to the first signed release needs one last uninstall.
 
 ## Build from source
 

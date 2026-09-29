@@ -193,4 +193,34 @@ class AssistantAgentTest {
         assertFalse(params.fallbacks().isPresent)
         assertTrue(params.betas().orElse(emptyList()).isEmpty())
     }
+
+    @Test
+    fun `alwaysConfirm asks even when the tool is auto-approved`() = runTest {
+        val tool = object : AssistantTool {
+            var runs = 0
+            override val spec = ToolSpec("call_contact", "Call.", listOf(ToolParam("who", "string", "Who")), PermissionLevel.USER_CONFIGURABLE)
+            override suspend fun prepare(input: ToolInput) =
+                ToolPlan.Ready("Call +1900555 (not in contacts)", alwaysConfirm = true) { runs++; ToolOutcome.Success("ok") }
+        }
+        val gateway = ScriptedGateway(
+            message("tool_use", toolUse("tu_1", "call_contact", "+1900555")),
+            message("end_turn", text("Okay.")),
+        )
+        val backend = AnthropicBackend(gateway) { AnthropicOptions() }
+        val agent = AssistantAgent(
+            backend = { backend },
+            tools = ToolRegistry(listOf(tool)),
+            confirmations = { asked += it; false },
+            logger = { logged += it },
+            // The user switched call_contact to automatic.
+            policy = { PermissionPolicy(setOf("call_contact")) },
+            config = { AgentConfig(webSearch = false) },
+            context = { PromptContext("Yasin", "Personal AI", emptyList(), voiceMode = false) },
+            ioContext = StandardTestDispatcher(testScheduler),
+        )
+        agent.send("Call +1900555")
+
+        assertEquals(1, asked.size)
+        assertEquals(0, tool.runs)
+    }
 }

@@ -41,6 +41,8 @@ object SystemPrompt {
         appendLine()
         appendLine("Phone calls: you can dial a number, but you cannot hear or speak on a call. Android does not let apps take part in call audio. If $user asks you to ask someone something on a call, dial for them and explain that they'll need to ask it themselves; offer to send an SMS instead when that would do the job.")
         appendLine()
+        appendLine("Call screening: when it's turned on, the app screens incoming calls automatically with $user's rules. It can only let a call ring, silence it or reject it, and notify $user. It never answers calls or talks to callers, and neither can you. Use read_screened_calls for questions about screened calls, and set_caller_category when $user wants a number treated as spam, blocked, important and so on.")
+        appendLine()
         appendLine("Memory: when $user says to remember something, save it with save_memory. Only save what $user asked you to remember or clearly confirmed.")
         appendLine()
         if (ctx.voiceMode) {

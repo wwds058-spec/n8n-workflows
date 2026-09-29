@@ -6,12 +6,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.ContactsContract.CommonDataKinds.Phone
+import android.provider.ContactsContract.PhoneLookup
 import com.personalai.assistant.core.AssistantTool
 import com.personalai.assistant.core.Contact
 import com.personalai.assistant.core.ContactMatch
 import com.personalai.assistant.core.ContactMatcher
 import com.personalai.assistant.core.PermissionLevel
 import com.personalai.assistant.core.PhoneNumber
+import com.personalai.assistant.core.PhoneNumbers
 import com.personalai.assistant.core.ToolInput
 import com.personalai.assistant.core.ToolOutcome
 import com.personalai.assistant.core.ToolParam
@@ -48,6 +50,15 @@ class ContactsRepository(private val context: Context, private val memories: Mem
         return byId.map { (id, v) -> Contact(id, v.first, v.second) }
     }
 
+    /** Name of the contact saved with [number], or null if none (or contacts can't be read). */
+    fun lookupName(number: String): String? {
+        if (!canRead() || PhoneNumbers.matchKey(number) == null) return null
+        val uri = Uri.withAppendedPath(PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+        return context.contentResolver.query(uri, arrayOf(PhoneLookup.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }
+
     suspend fun resolve(query: String): ContactMatch {
         val relationships = memories.recent(500)
             .filter { !it.relationship.isNullOrBlank() && !it.person.isNullOrBlank() }
@@ -71,7 +82,7 @@ class ContactsRepository(private val context: Context, private val memories: Mem
 }
 
 /** Where a call or message goes, resolved from a contact name or a raw number. */
-internal data class Recipient(val name: String?, val number: String) {
+internal data class Recipient(val name: String?, val number: String, val inContacts: Boolean) {
     val display: String get() = if (name != null) "$name ($number)" else number
 }
 
@@ -82,7 +93,8 @@ internal suspend fun resolveRecipient(
     input.string("phone_number")?.let { raw ->
         val number = ContactsRepository.normalizeNumber(raw)
         if (number.count { it.isDigit() } < 3) return null to reject("\"$raw\" isn't a valid phone number.")
-        return Recipient(input.string("contact"), number) to null
+        val saved = contacts.lookupName(number)
+        return Recipient(saved ?: input.string("contact"), number, inContacts = saved != null) to null
     }
     val query = input.string("contact")
         ?: return null to reject("Give either a contact name or a phone number.")
@@ -92,7 +104,7 @@ internal suspend fun resolveRecipient(
         is ContactMatch.Found -> {
             val number = ContactsRepository.preferredNumber(match.contact)
                 ?: return null to reject("${match.contact.name} has no phone number saved.")
-            Recipient(match.contact.name, number.number) to null
+            Recipient(match.contact.name, number.number, inContacts = true) to null
         }
         is ContactMatch.Ambiguous -> null to reject(
             "Several contacts match \"$query\": ${ContactsRepository.describeCandidates(match.candidates)}. " +
@@ -144,7 +156,10 @@ class CallContactTool(
         val (recipient, rejected) = resolveRecipient(contacts, input)
         if (rejected != null) return rejected
         val to = recipient!!
-        return ToolPlan.Ready("Call ${to.display}") {
+        // A number that isn't a saved contact always needs the user's approval, even when
+        // calls are set to run automatically: it could come from a web page or message.
+        val preview = if (to.inContacts) "Call ${to.display}" else "Call ${to.display}\n\n⚠ This number isn't in your contacts."
+        return ToolPlan.Ready(preview, alwaysConfirm = !to.inContacts) {
             if (!context.hasPermission(Manifest.permission.CALL_PHONE)) return@Ready missingPermission("make phone calls")
             val intent = Intent(Intent.ACTION_CALL, Uri.fromParts("tel", to.number, null))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

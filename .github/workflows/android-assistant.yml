@@ -16,8 +16,11 @@ permissions:
 
 jobs:
   build:
-    name: Test core and build debug APK
+    name: Test core and build APKs
     runs-on: ubuntu-latest
+    env:
+      # True once the repository owner has added the signing secrets.
+      HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
     defaults:
       run:
         working-directory: personal-ai-assistant
@@ -37,9 +40,42 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: personal-ai-assistant-debug-apk
           path: personal-ai-assistant/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Build release APK
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          # Always build the release variant so release-only checks run; sign it only when
+          # the signing secrets exist.
+          if [ "$HAS_SIGNING_KEY" = "true" ]; then
+            echo "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            export SIGNING_KEYSTORE_PATH="$RUNNER_TEMP/release.p12"
+          fi
+          ./gradlew :app:assembleRelease --stacktrace
+          rm -f "$RUNNER_TEMP/release.p12"
+          if [ "$HAS_SIGNING_KEY" = "true" ]; then
+            apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+            # The certificate fingerprint must stay the same across releases.
+            "$apksigner" verify --print-certs app/build/outputs/apk/release/*.apk | grep -i "SHA-256"
+          fi
+
+      - name: Upload signed release APK
+        if: env.HAS_SIGNING_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-ai-assistant-release-apk
+          path: personal-ai-assistant/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Signing key missing
+        if: env.HAS_SIGNING_KEY != 'true'
+        run: echo "::warning::No signing secrets set, so only the debug APK was built. See personal-ai-assistant/README.md, 'Permanent signing key'."

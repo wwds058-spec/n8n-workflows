@@ -8,6 +8,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     ASSISTANT("Assistant", Icons.Filled.Mic),
+    CALLS("Calls", Icons.Filled.Call),
     MEMORY("Memory", Icons.Filled.Psychology),
     ACTIVITY("Activity", Icons.Filled.History),
     SETTINGS("Settings", Icons.Filled.Settings),
@@ -68,7 +70,7 @@ private fun AppRoot(vm: AssistantViewModel) {
                         selected = tab == t.ordinal,
                         onClick = { tab = t.ordinal },
                         icon = { Icon(t.icon, contentDescription = null) },
-                        label = { Text(t.label) },
+                        label = { Text(t.label, maxLines = 1) },
                     )
                 }
             }
@@ -77,6 +79,7 @@ private fun AppRoot(vm: AssistantViewModel) {
         val modifier = Modifier.padding(padding)
         when (Tab.entries[tab]) {
             Tab.ASSISTANT -> AssistantScreen(vm, modifier)
+            Tab.CALLS -> CallsScreen(modifier)
             Tab.MEMORY -> MemoryScreen(vm, modifier)
             Tab.ACTIVITY -> ActivityScreen(vm, modifier)
             Tab.SETTINGS -> SettingsScreen(vm, modifier)
