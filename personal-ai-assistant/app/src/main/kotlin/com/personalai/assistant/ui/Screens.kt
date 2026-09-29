@@ -64,7 +64,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.personalai.assistant.AppContainer
-import com.personalai.assistant.core.AgentConfig
+import com.personalai.assistant.core.AnthropicOptions
+import com.personalai.assistant.core.Provider
 import java.text.DateFormat
 import java.util.Date
 
@@ -289,13 +290,27 @@ fun ActivityScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
 fun SettingsScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
     val s by vm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var apiKey by rememberSaveable { mutableStateOf(s.apiKey) }
+    val keyCheck by vm.keyCheck.collectAsStateWithLifecycle()
+    val checkingKey by vm.checkingKey.collectAsStateWithLifecycle()
+    // Key and model fields follow the selected service.
+    var apiKey by rememberSaveable(s.provider) { mutableStateOf(s.keyFor(s.provider)) }
+    var model by rememberSaveable(s.provider) { mutableStateOf(s.models[s.provider].orEmpty()) }
     var userName by rememberSaveable { mutableStateOf(s.userName) }
     var assistantName by rememberSaveable { mutableStateOf(s.assistantName) }
     var language by rememberSaveable { mutableStateOf(s.speechLanguage) }
     var saved by remember { mutableStateOf(false) }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+
+    fun saveKeyAndModel() {
+        val p = s.provider
+        vm.updateSettings {
+            it.copy(
+                apiKeys = it.apiKeys + (p to apiKey.trim()),
+                models = if (p == Provider.ANTHROPIC) it.models else it.models + (p to model.trim()),
+            )
+        }
+    }
 
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -304,35 +319,89 @@ fun SettingsScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
         Text("Settings", style = MaterialTheme.typography.titleLarge)
 
         Section("AI service")
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Provider.entries.forEach { p ->
+                FilterChip(selected = s.provider == p, onClick = { vm.selectProvider(p) }, label = { Text(p.label) })
+            }
+        }
+        Text(providerNote(s.provider), style = MaterialTheme.typography.bodySmall)
+
         OutlinedTextField(
             value = apiKey,
             onValueChange = { apiKey = it; saved = false },
-            label = { Text("Anthropic API key") },
+            label = { Text("${s.provider.label} API key") },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            "Create a key at console.anthropic.com. It's stored encrypted on this phone and sent only to Anthropic.",
+            "Create a key at ${s.provider.keyUrl}. It's stored encrypted on this phone and sent only to that service.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Text("Model", style = MaterialTheme.typography.labelLarge)
-        AgentConfig.MODELS.forEach { (id, label) ->
-            FilterChip(selected = s.model == id, onClick = { vm.updateSettings { it.copy(model = id) } }, label = { Text(label) })
-        }
-        Text("Thinking effort (higher is smarter but slower)", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("low", "medium", "high").forEach { level ->
+
+        if (s.provider == Provider.ANTHROPIC) {
+            Text("Model", style = MaterialTheme.typography.labelLarge)
+            AnthropicOptions.MODELS.forEach { (id, label) ->
                 FilterChip(
-                    selected = s.effort == level,
-                    onClick = { vm.updateSettings { it.copy(effort = level) } },
-                    label = { Text(level.replaceFirstChar { it.uppercase() }) },
+                    selected = s.modelFor(Provider.ANTHROPIC) == id,
+                    onClick = { vm.updateSettings { it.copy(models = it.models + (Provider.ANTHROPIC to id)) } },
+                    label = { Text(label) },
                 )
             }
-        }
-        ToggleRow("Web search", "Look things up online, like weather or phone numbers of offices.", s.webSearch) { on ->
-            vm.updateSettings { it.copy(webSearch = on) }
+            Text("Thinking effort (higher is smarter but slower)", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("low", "medium", "high").forEach { level ->
+                    FilterChip(
+                        selected = s.effort == level,
+                        onClick = { vm.updateSettings { it.copy(effort = level) } },
+                        label = { Text(level.replaceFirstChar { it.uppercase() }) },
+                    )
+                }
+            }
+            ToggleRow("Web search", "Look things up online, like weather or phone numbers of offices.", s.webSearch) { on ->
+                vm.updateSettings { it.copy(webSearch = on) }
+            }
+        } else {
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it; saved = false },
+                label = { Text("Model") },
+                placeholder = { Text(s.provider.defaultModel) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedButton(
+                onClick = {
+                    saveKeyAndModel()
+                    vm.checkKey(s.provider)
+                },
+                enabled = apiKey.isNotBlank() && !checkingKey,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (checkingKey) "Checking…" else "Check key & list models") }
+
+            keyCheck?.takeIf { it.provider == s.provider }?.let { check ->
+                if (check.error != null) {
+                    Text(check.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text(
+                        "Key works. Tap a model to use it (${check.models.size} available):",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        check.models.forEach { id ->
+                            FilterChip(
+                                selected = s.modelFor(s.provider) == id,
+                                onClick = {
+                                    model = id
+                                    vm.updateSettings { it.copy(models = it.models + (s.provider to id)) }
+                                },
+                                label = { Text(id) },
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Section("You")
@@ -366,9 +435,9 @@ fun SettingsScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
 
         Button(
             onClick = {
+                saveKeyAndModel()
                 vm.updateSettings {
                     it.copy(
-                        apiKey = apiKey.trim(),
                         userName = userName.trim(),
                         assistantName = assistantName.trim(),
                         speechLanguage = language.trim(),
@@ -428,4 +497,10 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onChang
         }
         Switch(checked = checked, onCheckedChange = onChange)
     }
+}
+
+private fun providerNote(p: Provider): String = when (p) {
+    Provider.ANTHROPIC -> "Paid (from \$5). Most reliable at planning phone actions. Includes web search."
+    Provider.GEMINI -> "Free tier available. On the free tier Google may use your requests, including contact names, to improve its products. No web search in this app."
+    Provider.GROQ -> "Free tier available and very fast. Runs open models, which get multi-step requests wrong more often. No web search in this app."
 }

@@ -56,14 +56,24 @@ class AssistantAgentTest {
         tool: AssistantTool,
         approve: Boolean = true,
         dispatcher: TestDispatcher,
-        model: String = AgentConfig.DEFAULT_MODEL,
+        model: String = AnthropicOptions.DEFAULT_MODEL,
+    ): AssistantAgent {
+        val backend = AnthropicBackend(gateway) { AnthropicOptions(model = model) }
+        return agentWith(backend, tool, approve, dispatcher)
+    }
+
+    private fun agentWith(
+        backend: ChatBackend,
+        tool: AssistantTool,
+        approve: Boolean = true,
+        dispatcher: TestDispatcher,
     ) = AssistantAgent(
-        gateway = gateway,
+        backend = { backend },
         tools = ToolRegistry(listOf(tool)),
         confirmations = { asked += it; approve },
         logger = { logged += it },
         policy = { PermissionPolicy() },
-        config = { AgentConfig(model = model, webSearch = false) },
+        config = { AgentConfig(webSearch = false) },
         context = { PromptContext("Yasin", "Personal AI", emptyList(), voiceMode = false) },
         clock = { ZonedDateTime.of(2026, 9, 28, 10, 0, 0, 0, ZoneId.of("Asia/Kolkata")) },
         ioContext = dispatcher,
@@ -171,7 +181,7 @@ class AssistantAgentTest {
             .send("Hi")
         val params = gateway.requests.single()
         assertTrue(params.fallbacks().isPresent)
-        assertTrue(params.betas().orElse(emptyList()).any { it.asString() == AssistantAgent.FALLBACK_BETA })
+        assertTrue(params.betas().orElse(emptyList()).any { it.asString() == AnthropicBackend.FALLBACK_BETA })
     }
 
     @Test

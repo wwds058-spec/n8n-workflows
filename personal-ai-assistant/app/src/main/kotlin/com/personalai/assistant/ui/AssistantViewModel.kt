@@ -8,6 +8,7 @@ import com.personalai.assistant.agent.AnthropicGateway
 import com.personalai.assistant.core.ActionRequest
 import com.personalai.assistant.core.ActionStatus
 import com.personalai.assistant.core.PermissionLevel
+import com.personalai.assistant.core.Provider
 import com.personalai.assistant.data.Settings
 import com.personalai.assistant.voice.Speaker
 import com.personalai.assistant.voice.SpeechInput
@@ -47,6 +48,15 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _confirmation = MutableStateFlow<PendingConfirmation?>(null)
     val confirmation: StateFlow<PendingConfirmation?> = _confirmation.asStateFlow()
+
+    /** Result of "Check key & list models": the models the key can use, or an error. */
+    data class KeyCheck(val provider: Provider, val models: List<String> = emptyList(), val error: String? = null)
+
+    private val _keyCheck = MutableStateFlow<KeyCheck?>(null)
+    val keyCheck: StateFlow<KeyCheck?> = _keyCheck.asStateFlow()
+
+    private val _checkingKey = MutableStateFlow(false)
+    val checkingKey: StateFlow<Boolean> = _checkingKey.asStateFlow()
 
     private val speech = SpeechInput(application)
     private val speaker = Speaker(application)
@@ -136,6 +146,28 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun updateSettings(transform: (Settings) -> Settings) = settingsStore.update(transform)
+
+    /** Switching service starts a new conversation; each service keeps its own history format. */
+    fun selectProvider(p: Provider) {
+        if (p == settings.value.provider) return
+        settingsStore.update { it.copy(provider = p) }
+        _keyCheck.value = null
+        newConversation()
+    }
+
+    fun checkKey(p: Provider) {
+        if (_checkingKey.value) return
+        _checkingKey.value = true
+        viewModelScope.launch {
+            _keyCheck.value = try {
+                KeyCheck(p, models = container.listModels(p))
+            } catch (e: Exception) {
+                KeyCheck(p, error = AnthropicGateway.describe(e))
+            } finally {
+                _checkingKey.value = false
+            }
+        }
+    }
 
     fun deleteMemory(id: Long) {
         viewModelScope.launch { container.database.memories().delete(id) }

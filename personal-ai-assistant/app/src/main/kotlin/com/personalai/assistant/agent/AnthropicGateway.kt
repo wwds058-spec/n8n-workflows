@@ -12,9 +12,10 @@ import com.anthropic.errors.UnauthorizedException
 import com.anthropic.models.beta.messages.BetaMessage
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.personalai.assistant.core.MessageGateway
+import com.personalai.assistant.core.ProviderException
 import java.time.Duration
 
-class MissingApiKeyException : IllegalStateException("Add your Anthropic API key in Settings.")
+class MissingApiKeyException : IllegalStateException("Add your Claude (Anthropic) API key in Settings.")
 
 /** Calls the Claude Messages API with the key from Settings. Rebuilds the client when the key changes. */
 class AnthropicGateway(private val apiKey: () -> String) : MessageGateway {
@@ -44,6 +45,7 @@ class AnthropicGateway(private val apiKey: () -> String) : MessageGateway {
         /** A message the user can act on, for errors from the API or the network. */
         fun describe(e: Throwable): String = when (e) {
             is MissingApiKeyException -> e.message!!
+            is ProviderException -> e.message ?: "The AI service returned an error."
             is UnauthorizedException -> "The API key was rejected. Check it in Settings."
             is PermissionDeniedException -> "This API key isn't allowed to use the selected model."
             is RateLimitException -> "Too many requests right now. Wait a moment and try again."

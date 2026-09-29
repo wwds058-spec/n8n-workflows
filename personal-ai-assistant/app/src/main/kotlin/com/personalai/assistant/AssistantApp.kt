@@ -7,11 +7,18 @@ import android.os.Build
 import com.personalai.assistant.agent.AnthropicGateway
 import com.personalai.assistant.core.ActionLogger
 import com.personalai.assistant.core.AgentConfig
+import com.personalai.assistant.core.AnthropicBackend
+import com.personalai.assistant.core.AnthropicOptions
 import com.personalai.assistant.core.AssistantAgent
 import com.personalai.assistant.core.AssistantTool
+import com.personalai.assistant.core.ChatBackend
 import com.personalai.assistant.core.ConfirmationGate
+import com.personalai.assistant.core.Endpoint
+import com.personalai.assistant.core.OkHttpTransport
+import com.personalai.assistant.core.OpenAiCompatibleBackend
 import com.personalai.assistant.core.PermissionPolicy
 import com.personalai.assistant.core.PromptContext
+import com.personalai.assistant.core.Provider
 import com.personalai.assistant.core.ToolRegistry
 import com.personalai.assistant.data.ActionLogEntity
 import com.personalai.assistant.data.AppDatabase
@@ -28,6 +35,8 @@ import com.personalai.assistant.tools.ReadCallLogTool
 import com.personalai.assistant.tools.ReminderWorker
 import com.personalai.assistant.tools.SaveMemoryTool
 import com.personalai.assistant.tools.SendSmsTool
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AssistantApp : Application() {
     lateinit var container: AppContainer
@@ -62,9 +71,32 @@ class AppContainer(context: Context) {
         ForgetMemoryTool(database.memories()),
     )
 
+    private val anthropic = AnthropicBackend(AnthropicGateway { settings.current.keyFor(Provider.ANTHROPIC) }) {
+        val s = settings.current
+        AnthropicOptions(model = s.modelFor(Provider.ANTHROPIC), effort = s.effortLevel)
+    }
+
+    private val transport = OkHttpTransport()
+
+    private val compatible: Map<Provider, OpenAiCompatibleBackend> =
+        Provider.entries.filter { it.baseUrl != null }.associateWith { p ->
+            OpenAiCompatibleBackend(p.label.substringBefore(" ("), transport) {
+                val s = settings.current
+                Endpoint(p.baseUrl!!, s.keyFor(p).trim(), s.modelFor(p))
+            }
+        }
+
+    private fun backendFor(p: Provider): ChatBackend = compatible[p] ?: anthropic
+
+    /** Checks the saved key for [p] by listing the models it can use. */
+    suspend fun listModels(p: Provider): List<String> = withContext(Dispatchers.IO) {
+        val backend = compatible[p] ?: return@withContext AnthropicOptions.MODELS.map { it.first }
+        backend.listModels()
+    }
+
     fun createAgent(confirmations: ConfirmationGate, voiceMode: () -> Boolean): AssistantAgent =
         AssistantAgent(
-            gateway = AnthropicGateway { settings.current.apiKey },
+            backend = { backendFor(settings.current.provider) },
             tools = ToolRegistry(tools),
             confirmations = confirmations,
             logger = ActionLogger { e ->
@@ -79,10 +111,7 @@ class AppContainer(context: Context) {
                 )
             },
             policy = { PermissionPolicy(settings.current.autoApproved) },
-            config = {
-                val s = settings.current
-                AgentConfig(model = s.model, effort = s.effortLevel, webSearch = s.webSearch)
-            },
+            config = { AgentConfig(webSearch = settings.current.webSearch) },
             context = {
                 val s = settings.current
                 PromptContext(

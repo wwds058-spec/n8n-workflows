@@ -52,10 +52,17 @@ personal-ai-assistant/
   request goes through the permission policy. If confirmation is needed, the app shows
   exactly what will happen (for example, "Text Ravi Kumar (+91…): 'I'll call you
   tomorrow'") before it runs.
-- **Model:** Claude Opus 5 by default, with Claude Sonnet 5 available in Settings. The app
-  uses adaptive thinking, and effort is set in Settings (default *medium* for quick replies).
-  On Opus 5 the app turns on server-side refusal fallbacks, so if a safety classifier
-  declines a request, the API retries it on a recommended model.
+- **AI service:** choose in Settings.
+
+  | Service | Cost | Notes |
+  |---|---|---|
+  | Claude (Anthropic) | Paid, from $5 | Default model Claude Opus 5, with Claude Sonnet 5 as the cheaper option. Uses adaptive thinking with adjustable effort, web search, and server-side refusal fallbacks on Opus 5. |
+  | Gemini (Google) | Free tier | Uses Gemini's OpenAI-compatible endpoint. On the free tier, Google may use requests to improve its products. |
+  | Groq | Free tier | Fast open models. Less reliable on multi-step requests. |
+
+  Gemini and Groq don't get web search in this app. Their model names change often, so
+  **Check key & list models** fetches the models your key can use and lets you pick one.
+  Switching service starts a new conversation.
 - **Privacy:** your API key is stored encrypted with the Android Keystore. Memories and
   the activity log stay on the phone and can be deleted from the app. Your request, your
   saved memories and the results of the tools it uses (for example, contact matches or
@@ -68,7 +75,10 @@ personal-ai-assistant/
 2. On your phone, allow installing apps from your browser or file manager, then open the
    APK.
 3. Open the app → **Settings**:
-   - Paste an Anthropic API key (from console.anthropic.com) and tap **Save**.
+   - Pick an AI service and paste its API key: console.anthropic.com (Claude),
+     aistudio.google.com/apikey (Gemini, free) or console.groq.com/keys (Groq, free).
+   - For Gemini or Groq, tap **Check key & list models** and pick a model.
+   - Tap **Save**.
    - Tap **Grant phone permissions**.
    - Optionally set your name and a speech language (`en-IN`, `te-IN`, `hi-IN`, …).
 4. Go to **Assistant** and tap the mic, or type.

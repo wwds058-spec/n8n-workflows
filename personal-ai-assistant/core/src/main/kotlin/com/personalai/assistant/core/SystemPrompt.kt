@@ -14,6 +14,8 @@ data class PromptContext(
     val assistantName: String,
     val memories: List<MemoryFact>,
     val voiceMode: Boolean,
+    /** Set by the agent: whether the model can search the web this turn. */
+    val webSearch: Boolean = false,
 )
 
 object SystemPrompt {
@@ -29,7 +31,12 @@ object SystemPrompt {
         appendLine("- The app asks $user to approve sensitive actions itself. Don't ask for a separate verbal confirmation before calling such a tool; if $user declines, accept it and don't retry.")
         appendLine("- If a request is ambiguous (for example two contacts match), ask a short question instead of guessing.")
         appendLine("- Resolve dates and times like \"tomorrow morning\" from the current time given with each message. Default times: morning 9:00, afternoon 14:00, evening 18:00, night 21:00.")
-        appendLine("- Use web search only for information that isn't on the phone. Keep local phone data and web information clearly separate in your answers.")
+        if (ctx.webSearch) {
+            appendLine("- Use web search only for information that isn't on the phone. Keep local phone data and web information clearly separate in your answers.")
+        } else {
+            appendLine("- You can't search the web. If $user needs current information from the internet, say so instead of guessing.")
+        }
+        appendLine("- Only use the tools you are given, with arguments that match their descriptions.")
         appendLine("- Never share $user's personal data with anyone unless $user asked for exactly that.")
         appendLine()
         appendLine("Phone calls: you can dial a number, but you cannot hear or speak on a call. Android does not let apps take part in call audio. If $user asks you to ask someone something on a call, dial for them and explain that they'll need to ask it themselves; offer to send an SMS instead when that would do the job.")
