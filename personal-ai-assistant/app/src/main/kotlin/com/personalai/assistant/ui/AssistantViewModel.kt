@@ -15,12 +15,16 @@ import com.personalai.assistant.data.MemoryEntity
 import com.personalai.assistant.data.Settings
 import com.personalai.assistant.voice.Speaker
 import com.personalai.assistant.voice.SpeechInput
+import androidx.work.WorkManager
+import com.personalai.assistant.tools.ReminderWorker
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class ChatRole { USER, ASSISTANT, ACTION, ERROR }
 
@@ -204,6 +208,24 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun clearActivity() {
         viewModelScope.launch { container.database.actionLog().deleteAll() }
+    }
+
+    val encryptionStatus = container.encryptionStatus
+
+    /**
+     * Deletes memories, chat, activity, reminders and call-screening data from this phone.
+     * API keys and settings are kept. Default call rules are put back.
+     */
+    fun deleteAllData() {
+        agent.reset()
+        _chat.value = emptyList()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                WorkManager.getInstance(getApplication<Application>()).cancelAllWorkByTag(ReminderWorker.TAG)
+                container.database.clearAllTables()
+                container.callScreening.restoreDefaultRules()
+            }
+        }
     }
 
     fun updateMemory(memory: MemoryEntity) {

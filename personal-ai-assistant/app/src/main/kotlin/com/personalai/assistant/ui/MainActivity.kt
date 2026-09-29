@@ -1,7 +1,7 @@
 package com.personalai.assistant.ui
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.os.SystemClock
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -24,27 +24,76 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.personalai.assistant.core.PermissionLevel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val viewModel: AssistantViewModel by viewModels()
+
+    /** True while the app lock screen covers the app. */
+    private var locked by mutableStateOf(false)
+    private var lockError by mutableStateOf<String?>(null)
+    private var backgroundedAt = 0L
+
+    private val lockEnabled: Boolean
+        get() = viewModel.settings.value.appLock && AppLock.isAvailable(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Stay unlocked across rotation; lock on a fresh start.
+        locked = lockEnabled && savedInstanceState?.getBoolean(KEY_UNLOCKED) != true
         setContent {
             AppTheme {
-                AppRoot(viewModel)
+                if (locked) {
+                    LaunchedEffect(Unit) { unlock() }
+                    LockScreen(error = lockError, onUnlock = ::unlock)
+                } else {
+                    AppRoot(viewModel)
+                }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val away = SystemClock.elapsedRealtime() - backgroundedAt
+        if (backgroundedAt > 0 && away > AppLock.GRACE_MILLIS && lockEnabled) locked = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        backgroundedAt = SystemClock.elapsedRealtime()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_UNLOCKED, !locked)
+    }
+
+    private fun unlock() {
+        AppLock.authenticate(this, "Unlock Personal AI") { success, error ->
+            if (success) {
+                locked = false
+                lockError = null
+            } else {
+                lockError = error
+            }
+        }
+    }
+
+    private companion object {
+        const val KEY_UNLOCKED = "unlocked"
     }
 }
 

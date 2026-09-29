@@ -104,6 +104,17 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(open)
             .setAutoCancel(true)
+            .apply {
+                if ((context as AssistantApp).container.settings.current.appLock) {
+                    setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                    setPublicVersion(
+                        NotificationCompat.Builder(context, CHANNEL_ID)
+                            .setSmallIcon(R.drawable.ic_launcher_foreground)
+                            .setContentTitle("Reminder")
+                            .build(),
+                    )
+                }
+            }
             .build()
         NotificationManagerCompat.from(context).notify(id.hashCode(), notification)
         val reminderId = inputData.getLong(KEY_REMINDER_ID, -1L)

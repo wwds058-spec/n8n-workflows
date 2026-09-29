@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.personalai.assistant.AppContainer
 import com.personalai.assistant.core.AnthropicOptions
@@ -352,6 +353,7 @@ fun SettingsScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
     var assistantName by rememberSaveable { mutableStateOf(s.assistantName) }
     var language by rememberSaveable { mutableStateOf(s.speechLanguage) }
     var saved by remember { mutableStateOf(false) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
@@ -515,6 +517,33 @@ fun SettingsScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
             }
         }
 
+        Section("Security")
+        val activity = context as? FragmentActivity
+        val lockAvailable = remember { AppLock.isAvailable(context) }
+        ToggleRow(
+            "App lock",
+            if (lockAvailable) "Ask for your fingerprint, face or screen lock when opening the app. Call screening and reminders keep working while locked."
+            else "Set up a screen lock (PIN, pattern or fingerprint) on your phone first.",
+            s.appLock,
+        ) { on ->
+            if (!on) {
+                vm.updateSettings { it.copy(appLock = false) }
+            } else if (lockAvailable && activity != null) {
+                // Confirm the user can unlock before turning the lock on.
+                AppLock.authenticate(activity, "Turn on app lock") { success, _ ->
+                    if (success) vm.updateSettings { it.copy(appLock = true) }
+                }
+            }
+        }
+        Text(
+            (if (vm.encryptionStatus.encrypted) "✓ Local data is encrypted. " else "⚠ ") + vm.encryptionStatus.detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (vm.encryptionStatus.encrypted) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+        )
+        OutlinedButton(onClick = { confirmDeleteAll = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Delete all my data")
+        }
+
         Section("Phone permissions")
         Text(
             "Contacts, calls, call history, SMS, calendar, microphone and notifications. Each is used only when you ask for something that needs it.",
@@ -532,6 +561,22 @@ fun SettingsScreen(vm: AssistantViewModel, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Open Android app settings") }
         Spacer(Modifier.height(24.dp))
+    }
+
+    if (confirmDeleteAll) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text("Delete all your data?") },
+            text = {
+                Text(
+                    "This deletes memories, chat history, the activity log, reminders, caller categories, " +
+                        "screened calls and your custom call rules from this phone. API keys and settings are kept. " +
+                        "This can't be undone.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.deleteAllData(); confirmDeleteAll = false }) { Text("Delete everything") } },
+            dismissButton = { TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") } },
+        )
     }
 }
 

@@ -14,6 +14,7 @@ import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
 import com.personalai.assistant.core.MemoryFact
 import kotlinx.coroutines.flow.Flow
 
@@ -291,9 +292,11 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        fun create(context: Context): AppDatabase =
+        /** [factory] supplies SQLCipher encryption; see [DatabaseEncryption]. */
+        fun create(context: Context, factory: SupportSQLiteOpenHelper.Factory?): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "assistant.db")
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .apply { if (factory != null) openHelperFactory(factory) }
                 .build()
     }
 }

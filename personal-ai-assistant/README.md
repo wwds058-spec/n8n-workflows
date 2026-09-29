@@ -100,7 +100,19 @@ personal-ai-assistant/
   Gemini and Groq don't get web search in this app. Their model names change often, so
   **Check key & list models** fetches the models your key can use and lets you pick one.
   Switching service starts a new conversation.
-- **Privacy:** your API key is stored encrypted with the Android Keystore. Memories and
+- **Privacy and security:**
+  - API keys are stored encrypted with the Android Keystore.
+  - The local database (memories, chat, activity log, reminders, call screening) is
+    encrypted with SQLCipher. Its random key is protected by the Android Keystore. An
+    existing unencrypted database is converted on first launch; if that ever fails, the
+    app keeps working unencrypted and says so under Settings → Security.
+  - Optional app lock (Settings → Security) asks for your fingerprint, face or screen lock
+    when opening the app, and again after 30 seconds in the background. While it's on,
+    call and reminder notifications hide their details on the lock screen.
+  - Settings → Security → **Delete all my data** removes memories, chat, activity,
+    reminders and call-screening data (API keys and settings are kept).
+  - Your request, your saved memories and the results of the tools it uses (for example,
+    contact matches or calendar entries) are sent to the AI service you selected. Memories and
   the activity log stay on the phone and can be deleted from the app. Your request, your
   saved memories and the results of the tools it uses (for example, contact matches or
   calendar entries) are sent to the Claude API.

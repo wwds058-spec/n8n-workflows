@@ -36,6 +36,8 @@ class CallScreeningRepository(
     private val context: Context,
     private val db: AppDatabase,
     private val contacts: ContactsRepository,
+    /** When the app lock is on, notifications hide caller details on the lock screen. */
+    private val hideDetailsOnLockScreen: () -> Boolean = { false },
 ) {
     val rules = db.callRules()
     val categories = db.callerCategories()
@@ -56,6 +58,12 @@ class CallScreeningRepository(
         val roles = context.getSystemService(RoleManager::class.java) ?: return null
         if (!roles.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) return null
         return roles.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
+    }
+
+    /** Puts the built-in rules back, e.g. after the user deleted all their data. */
+    suspend fun restoreDefaultRules() {
+        context.getSharedPreferences("call_screening", Context.MODE_PRIVATE).edit().putBoolean("rulesSeeded", false).apply()
+        ensureDefaultRules()
     }
 
     /** Creates the built-in rules once, on first launch. Rules the user deletes stay deleted. */
@@ -153,6 +161,18 @@ class CallScreeningRepository(
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(open)
             .setAutoCancel(true)
+            .apply {
+                if (hideDetailsOnLockScreen()) {
+                    setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                    setPublicVersion(
+                        NotificationCompat.Builder(context, CHANNEL_ID)
+                            .setSmallIcon(R.drawable.ic_launcher_foreground)
+                            .setContentTitle("Call screened")
+                            .setCategory(NotificationCompat.CATEGORY_CALL)
+                            .build(),
+                    )
+                }
+            }
             .build()
         NotificationManagerCompat.from(context).notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
     }

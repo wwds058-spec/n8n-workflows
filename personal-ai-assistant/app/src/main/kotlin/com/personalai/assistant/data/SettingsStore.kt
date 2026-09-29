@@ -29,6 +29,8 @@ data class Settings(
     val speechLanguage: String = "",
     /** User-configurable tools the user lets run without asking. */
     val autoApproved: Set<String> = emptySet(),
+    /** Require fingerprint, face or the phone's PIN to open the app. */
+    val appLock: Boolean = false,
 ) {
     val apiKey: String get() = keyFor(provider)
 
@@ -75,6 +77,7 @@ class SettingsStore(context: Context) {
             putBoolean("webSearch", next.webSearch)
             putString("speechLanguage", next.speechLanguage)
             putStringSet("autoApproved", next.autoApproved)
+            putBoolean("appLock", next.appLock)
         }
         state.value = next
     }
@@ -93,6 +96,7 @@ class SettingsStore(context: Context) {
             webSearch = prefs.getBoolean("webSearch", d.webSearch),
             speechLanguage = prefs.getString("speechLanguage", d.speechLanguage).orEmpty(),
             autoApproved = prefs.getStringSet("autoApproved", d.autoApproved)?.toSet().orEmpty(),
+            appLock = prefs.getBoolean("appLock", d.appLock),
         )
     }
 

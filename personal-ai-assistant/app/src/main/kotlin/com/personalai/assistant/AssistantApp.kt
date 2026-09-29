@@ -23,6 +23,8 @@ import com.personalai.assistant.core.Provider
 import com.personalai.assistant.core.ToolRegistry
 import com.personalai.assistant.data.ActionLogEntity
 import com.personalai.assistant.data.AppDatabase
+import com.personalai.assistant.data.DatabaseEncryption
+import com.personalai.assistant.data.EncryptionStatus
 import com.personalai.assistant.data.SettingsStore
 import com.personalai.assistant.tools.CallContactTool
 import com.personalai.assistant.tools.CancelReminderTool
@@ -67,14 +69,16 @@ class AppContainer(context: Context) {
     private val app = context.applicationContext
 
     val settings = SettingsStore(app)
-    val database = AppDatabase.create(app)
+    private val openedDatabase = DatabaseEncryption.open(app)
+    val database: AppDatabase = openedDatabase.first
+    val encryptionStatus: EncryptionStatus = openedDatabase.second
 
     /** For work that must finish even if the screen that started it goes away. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val contacts = ContactsRepository(app, database.memories())
 
-    val callScreening = CallScreeningRepository(app, database, contacts).also { repo ->
+    val callScreening = CallScreeningRepository(app, database, contacts) { settings.current.appLock }.also { repo ->
         appScope.launch { repo.ensureDefaultRules() }
     }
 
