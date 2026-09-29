@@ -224,6 +224,6 @@ class OpenAiCompatibleBackend(
 
     private companion object {
         /** Model ids that can't hold a chat with tools. */
-        val NOT_CHAT = listOf("embed", "tts", "whisper", "guard", "imagen", "image", "veo", "aqa", "audio", "live", "transcribe")
+        val NOT_CHAT = listOf("embed", "tts", "whisper", "guard", "imagen", "image", "veo", "aqa", "audio", "live", "transcribe", "antigravity", "deep-research", "robotics", "computer-use")
     }
 }

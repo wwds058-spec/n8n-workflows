@@ -157,7 +157,8 @@ class OpenAiCompatibleBackendTest {
         val transport = ScriptedTransport(
             ok(
                 """{"data":[{"id":"models/gemini-2.5-flash"},{"id":"models/text-embedding-004"},
-                   {"id":"models/gemini-2.5-pro"},{"id":"whisper-large-v3"}]}""",
+                   {"id":"models/gemini-2.5-pro"},{"id":"whisper-large-v3"},
+                   {"id":"models/antigravity-preview-latest"},{"id":"models/deep-research-preview-04-2026"}]}""",
             ),
         )
         assertEquals(listOf("gemini-2.5-flash", "gemini-2.5-pro"), backend(transport).listModels())

@@ -10,7 +10,7 @@ enum class Provider(
     val baseUrl: String?,
 ) {
     ANTHROPIC("Claude (Anthropic)", "claude-opus-5", "console.anthropic.com", null),
-    GEMINI("Gemini (Google)", "gemini-2.5-flash", "aistudio.google.com/apikey", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    GEMINI("Gemini (Google)", "gemini-3.6-flash", "aistudio.google.com/apikey", "https://generativelanguage.googleapis.com/v1beta/openai"),
     GROQ("Groq", "openai/gpt-oss-120b", "console.groq.com/keys", "https://api.groq.com/openai/v1"),
 }
 

@@ -91,7 +91,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 reply.actions.filter { it.status != ActionStatus.SUCCEEDED || it.toolName !in QUIET_TOOLS }
                     .forEach { append(ChatItem(ChatRole.ACTION, "${statusMark(it.status)} ${it.summary}")) }
                 val answer = reply.text.ifBlank { "Done." }
-                append(ChatItem(ChatRole.ASSISTANT, answer))
+                append(ChatItem(ChatRole.ASSISTANT, plainText(answer)))
                 if (spoken && settings.value.voiceReplies) speaker.speak(answer, settings.value.speechLanguage)
             } catch (e: Exception) {
                 append(ChatItem(ChatRole.ERROR, AnthropicGateway.describe(e)))
@@ -194,6 +194,13 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private companion object {
         /** Successful read-only lookups aren't shown as separate lines in the chat. */
         val QUIET_TOOLS = setOf("find_contact", "read_call_log", "read_calendar")
+
+        /** Turns the light markdown some models use into plain text for the chat bubble. */
+        fun plainText(text: String): String = text.lines().joinToString("\n") { line ->
+            line.replace(Regex("^(\\s*)[*-] "), "$1• ")
+                .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+                .replace(Regex("^#+ "), "")
+        }
 
         fun statusMark(status: ActionStatus) = when (status) {
             ActionStatus.SUCCEEDED -> "✓"
